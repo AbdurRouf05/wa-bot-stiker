@@ -1,247 +1,184 @@
+// commands/qc.js
+// Quote Creator seperti WhatsApp bubble asli
+
+// ==== coba load canvas (buat balon chat) ====
 let createCanvas, loadImage;
 try {
   ({ createCanvas, loadImage } = require("canvas"));
 } catch (e) {
   createCanvas = null;
   loadImage = null;
+  console.log(
+    "[qc] module 'canvas' tidak tersedia, fitur .qc akan dimatikan di environment ini."
+  );
 }
 
-const sharp = require("sharp");
+// ==== coba load sharp (convert PNG -> WebP) ====
+let sharp;
+try {
+  sharp = require("sharp");
+} catch (e) {
+  sharp = null;
+  console.log(
+    "[qc] module 'sharp' tidak tersedia, fitur .qc akan dimatikan di environment ini."
+  );
+}
+
 const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
 
 /**
- * .qc
+ * .qc - Quote Creator seperti WhatsApp bubble asli
  * - .qc teks
- * - reply pesan lalu kirim .qc
+ * - reply pesan lalu ketik .qc
  */
-module.exports = async ({ sock, msg, from, args, getMediaBuffer }) => {
-  if (!createCanvas || !loadImage) {
+module.exports = async ({ sock, msg, from, args }) => {
+  // Kalau canvas atau sharp tidak tersedia (Termux), jangan bikin bot crash
+  if (!createCanvas || !loadImage || !sharp) {
     await sock.sendMessage(
       from,
-      { text: "Fitur .qc belum tersedia di Termux/Android (module canvas tidak terpasang)." },
+      {
+        text:
+          "Fitur *.qc* belum tersedia di environment ini.\n" +
+          "Diperlukan module *canvas* dan *sharp* yang tidak bisa dipasang di Termux.",
+      },
       { quoted: msg }
     );
     return;
   }
 
-let text = (args || []).join(" ").trim();
-  let targetJid;
-  let isReply = false;
-
-  // ========== CEK REPLY / TIDAK ==========
-  const quoted = ctxInfo.quotedMessage;
-  if (quoted) {
-    isReply = true;
-
-    const qType = Object.keys(quoted)[0]; // misal: "conversation" / "extendedTextMessage"
-    const qm = quoted[qType] || {};
-
-    // Di banyak kasus extendedTextMessage teks-nya ada di qm.text
-    const qText =
-      qm.text || // extendedTextMessage.text
-      qm.conversation || // conversation
-      qm.extendedTextMessage?.text || // fallback lain
-      qm.imageMessage?.caption ||
-      qm.videoMessage?.caption ||
-      "";
-
-    if (!text) text = (qText || "").trim();
-
-    // JID pemilik pesan yang di-reply
-    targetJid =
-      ctxInfo.participant || // pengirim pesan yang di-reply (di grup)
-      msg.key.participant || // fallback
-      msg.key.remoteJid;
-  } else {
-    // bukan reply → pakai pengirim pesan ini
-    targetJid = msg.key.participant || msg.key.remoteJid;
-  }
-
-  if (!text) {
-    await sock.sendMessage(
-      from,
-      { text: "Kirim *.qc teks* atau reply pesan dengan *.qc*." },
-      { quoted: msg }
-    );
-    return;
-  }
-
-  // ========== AMBIL NICKNAME ==========
-  const justNumber = (jid) => (jid || "").split("@")[0];
+  const m = msg.message || {};
+  const ext = m.extendedTextMessage;
 
   let displayName = "";
+  let text = args.join(" ");
 
-  if (!isReply && msg.pushName) {
-    displayName = msg.pushName;
+  // ===== tentukan target (reply atau tidak) =====
+  let quotedMsg = null;
+  if (ext && ext.contextInfo && ext.contextInfo.quotedMessage) {
+    // user reply pesan orang lain
+    quotedMsg = ext.contextInfo;
   }
 
-  const contact = sock.contacts?.[targetJid];
-  if (contact) {
+  if (quotedMsg) {
+    // kalau reply, ambil nama & pesan dari target reply
+    const participant = quotedMsg.participant || quotedMsg.remoteJid || "";
     displayName =
-      displayName ||
-      contact.name ||
-      contact.notify ||
-      contact.verifiedName ||
-      contact.pushname ||
+      quotedMsg.mentionedJid?.[0] ||
+      quotedMsg.displayName ||
+      participant.split("@")[0] ||
+      "User";
+
+    const qMsg = quotedMsg.quotedMessage || quotedMsg.message || {};
+    text =
+      qMsg.conversation ||
+      qMsg.extendedTextMessage?.text ||
+      qMsg.imageMessage?.caption ||
+      qMsg.videoMessage?.caption ||
+      text ||
       "";
+  } else {
+    // kalau tidak reply, pakai nama pengirim sendiri
+    const sender = msg.key?.participant || msg.key?.remoteJid || "";
+    displayName = sender.split("@")[0] || "User";
   }
 
-  if (!displayName) displayName = justNumber(targetJid);
-
-  console.log(`[QC] name="${displayName}" | jid=${targetJid}`);
-
-  // ========== PENGATURAN BUBBLE ==========
-  const AVATAR_SIZE = 72;
-  const AVATAR_MARGIN = 10;
-  const OUTER_MARGIN = 10;
-  const BUBBLE_PADDING_X = 20;
-  const BUBBLE_PADDING_Y = 16;
-  const MAX_BUBBLE_WIDTH = 380;
-  const LINE_HEIGHT = 24;
-  const NAME_HEIGHT = 22;
-
-  // canvas sementara untuk ukur teks
-  const tmpCanvas = createCanvas(1, 1);
-  const tmpCtx = tmpCanvas.getContext("2d");
-  tmpCtx.font = "16px Segoe UI";
-
-  const nameWidth = tmpCtx.measureText(displayName).width;
-
-  const words = text.split(/\s+/);
-  const lines = [];
-  let currentLine = "";
-
-  for (const word of words) {
-    const testLine = currentLine ? currentLine + " " + word : word;
-    const w = tmpCtx.measureText(testLine).width;
-
-    if (w > MAX_BUBBLE_WIDTH && currentLine) {
-      lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = testLine;
-    }
-  }
-  if (currentLine) lines.push(currentLine);
-
-  const textLinesWidth =
-    lines.length > 0
-      ? Math.max(...lines.map((ln) => tmpCtx.measureText(ln).width))
-      : 0;
-
-  const contentWidth = Math.max(nameWidth, textLinesWidth);
-  const bubbleWidth =
-    Math.min(MAX_BUBBLE_WIDTH, contentWidth) + BUBBLE_PADDING_X * 2;
-  const bubbleHeight =
-    lines.length * LINE_HEIGHT +
-    BUBBLE_PADDING_Y * 2 +
-    (displayName ? NAME_HEIGHT : 0);
-
-  const contentHeight = Math.max(AVATAR_SIZE, bubbleHeight);
-
-  // ukuran canvas PAS dengan konten → stiker kelihatan penuh
-  const canvasWidth =
-    OUTER_MARGIN * 2 + AVATAR_SIZE + AVATAR_MARGIN + bubbleWidth;
-  const canvasHeight = OUTER_MARGIN * 2 + contentHeight;
-
-  const canvas = createCanvas(canvasWidth, canvasHeight);
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-
-  // ========== AMBIL FOTO PROFIL ==========
-  let avatarImg = null;
-  try {
-    const avatarJid =
-      (isReply && ctxInfo.participant) ||
-      (targetJid.endsWith("@g.us") ? ctxInfo.participant : targetJid);
-
-    if (avatarJid) {
-      const url = await sock.profilePictureUrl(avatarJid, "image");
-      if (url) {
-        const res = await fetch(url);
-        const buf = Buffer.from(await res.arrayBuffer());
-        avatarImg = await loadImage(buf);
-      }
-    }
-  } catch (e) {
-    console.log("[QC] gagal ambil avatar:", e?.message || e);
-  }
-
-  // ========== POSISI ==========
-  const avatarX = OUTER_MARGIN + AVATAR_SIZE / 2;
-  const avatarY = OUTER_MARGIN + contentHeight / 2;
-
-  const bubbleX = OUTER_MARGIN + AVATAR_SIZE + AVATAR_MARGIN;
-  const bubbleY = OUTER_MARGIN;
-  const radius = 14;
-
-  // ========== GAMBAR AVATAR ==========
-  if (avatarImg) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(avatarX, avatarY, AVATAR_SIZE / 2, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-    ctx.drawImage(
-      avatarImg,
-      avatarX - AVATAR_SIZE / 2,
-      avatarY - AVATAR_SIZE / 2,
-      AVATAR_SIZE,
-      AVATAR_SIZE
+  if (!text.trim()) {
+    await sock.sendMessage(
+      from,
+      {
+        text:
+          "Contoh:\n" +
+          "• *.qc Halo semuanya*\n" +
+          "• Reply pesan lalu ketik *.qc*",
+      },
+      { quoted: msg }
     );
-    ctx.restore();
+    return;
   }
 
-  // ========== GAMBAR BUBBLE ==========
-  ctx.fillStyle = "#005c4b";
-  ctx.beginPath();
-  ctx.moveTo(bubbleX + radius, bubbleY);
-  ctx.lineTo(bubbleX + bubbleWidth - radius, bubbleY);
-  ctx.quadraticCurveTo(
-    bubbleX + bubbleWidth,
-    bubbleY,
-    bubbleX + bubbleWidth,
-    bubbleY + radius
-  );
-  ctx.lineTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight - radius);
-  ctx.quadraticCurveTo(
-    bubbleX + bubbleWidth,
-    bubbleY + bubbleHeight,
-    bubbleX + bubbleWidth - radius,
-    bubbleY + bubbleHeight
-  );
-  ctx.lineTo(bubbleX + radius, bubbleY + bubbleHeight);
-  ctx.quadraticCurveTo(
-    bubbleX,
-    bubbleY + bubbleHeight,
-    bubbleX,
-    bubbleY + bubbleHeight - radius
-  );
-  ctx.lineTo(bubbleX, bubbleY + radius);
-  ctx.quadraticCurveTo(bubbleX, bubbleY, bubbleX + radius, bubbleY);
-  ctx.closePath();
+  // ===== gambar bubble chat ala WhatsApp =====
+  const width = 800;
+  const height = 400;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+
+  // background transparan
+  ctx.clearRect(0, 0, width, height);
+
+  // balon chat putih
+  const bubbleX = 40;
+  const bubbleY = 80;
+  const bubbleW = width - 80;
+  const bubbleH = height - 140;
+  const radius = 30;
+
+  ctx.fillStyle = "#ffffff";
+  roundedRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, radius);
   ctx.fill();
 
-  // ========== TEKS NAMA ==========
-  if (displayName) {
-    ctx.fillStyle = "#53bdeb";
-    ctx.font = "bold 15px Segoe UI";
-    ctx.fillText(displayName, bubbleX + BUBBLE_PADDING_X, bubbleY + 20);
-  }
+  // Nama pengirim
+  ctx.fillStyle = "#128C7E"; // hijau WA
+  ctx.font = "bold 36px Sans";
+  ctx.textAlign = "left";
+  ctx.fillText(displayName, bubbleX + 30, bubbleY + 50);
 
-  // ========== TEKS PESAN ==========
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "16px Segoe UI";
-  let textY = bubbleY + (displayName ? 40 : 22);
+  // Isi pesan
+  ctx.fillStyle = "#000000";
+  ctx.font = "28px Sans";
 
+  const lines = wrapText(ctx, text, bubbleX + 30, bubbleY + 90, bubbleW - 60, 36);
+  let textY = bubbleY + 90;
   for (const line of lines) {
-    ctx.fillText(line, bubbleX + BUBBLE_PADDING_X, textY);
-    textY += LINE_HEIGHT;
+    ctx.fillText(line, bubbleX + 30, textY);
+    textY += 36;
   }
 
-  // ========== KONVERSI KE STIKER ==========
+  // Tail bubble (ekor ke kiri)
+  ctx.beginPath();
+  ctx.moveTo(bubbleX + 60, bubbleY + bubbleH);
+  ctx.lineTo(bubbleX + 40, bubbleY + bubbleH + 30);
+  ctx.lineTo(bubbleX + 120, bubbleY + bubbleH);
+  ctx.closePath();
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+
   const pngBuf = canvas.toBuffer("image/png");
   const webpBuf = await sharp(pngBuf).webp({ quality: 95 }).toBuffer();
 
   await sock.sendMessage(from, { sticker: webpBuf }, { quoted: msg });
 };
+
+// Helper: rounded rectangle
+function roundedRect(ctx, x, y, width, height, radius) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+// Helper: wrap text ke beberapa baris
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = text.split(/\s+/);
+  const lines = [];
+  let line = "";
+
+  for (const word of words) {
+    const testLine = line ? line + " " + word : word;
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = testLine;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
