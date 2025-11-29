@@ -1,5 +1,11 @@
-// commands/qc.js
-const { createCanvas, loadImage } = require("canvas");
+let createCanvas, loadImage;
+try {
+  ({ createCanvas, loadImage } = require("canvas"));
+} catch (e) {
+  createCanvas = null;
+  loadImage = null;
+}
+
 const sharp = require("sharp");
 const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
 
@@ -8,15 +14,17 @@ const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
  * - .qc teks
  * - reply pesan lalu kirim .qc
  */
-module.exports = async ({ sock, msg, from, args }) => {
-  const m = msg.message || {};
-  const ext = m.extendedTextMessage || {};
-  const ctxInfo = ext.contextInfo || {};
+module.exports = async ({ sock, msg, from, args, getMediaBuffer }) => {
+  if (!createCanvas || !loadImage) {
+    await sock.sendMessage(
+      from,
+      { text: "Fitur .qc belum tersedia di Termux/Android (module canvas tidak terpasang)." },
+      { quoted: msg }
+    );
+    return;
+  }
 
-  // DEBUG (boleh kamu matikan nanti)
-  // console.log("EXT >>>", JSON.stringify(ext, null, 2));
-
-  let text = (args || []).join(" ").trim();
+let text = (args || []).join(" ").trim();
   let targetJid;
   let isReply = false;
 
