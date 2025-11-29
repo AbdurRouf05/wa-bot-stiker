@@ -9,9 +9,10 @@ const {
 const qrcode = require("qrcode-terminal");
 const P = require("pino");
 const path = require("path");
+const fs = require("fs");
 const { tmp, getMediaBuffer } = require("./utils");
 
-// Di bagian commands, tambah pn:
+// Daftar command
 const commands = {
   menu: require("./commands/menu"),
   s: require("./commands/sticker"),
@@ -25,7 +26,7 @@ const commands = {
   remini: require("./commands/remini"),
   yt: require("./commands/yt"),
   tt: require("./commands/tiktok"),
-  ig: require("./commands/ig")
+  ig: require("./commands/ig"),
 };
 
 // helper: ambil teks dari berbagai tipe message
@@ -41,30 +42,50 @@ function getTextFromMessage(msg) {
 }
 
 async function start() {
-  const { state, saveCreds } = await useMultiFileAuthState(
-    path.join(__dirname, "auth")
-  );
+  // path folder auth (session Baileys)
+  const authDir = path.join(__dirname, "auth");
+
+  const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
   const sock = makeWASocket({
     auth: state,
     logger: P({ level: "silent" }),
-    printQRInTerminal: false,
+    printQRInTerminal: false, // kita pakai qrcode-terminal manual
     browser: ["Abdbot", "Chrome", "1.0.0"],
   });
 
-  // QR code
+  // ====== QR & koneksi ======
   sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect, qr } = update;
+
     if (qr) {
-      console.log("Scan QR ini:");
+      console.log("=== Scan QR ini pakai WhatsApp HP kamu ===");
       qrcode.generate(qr, { small: true });
     }
+
     if (connection === "close") {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !==
-        DisconnectReason.loggedOut;
-      console.log("Connection closed, reconnect:", shouldReconnect);
-      if (shouldReconnect) start();
+      const statusCode =
+        lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode;
+
+      console.log("Connection closed. status:", statusCode);
+
+      const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+
+      if (isLoggedOut) {
+        console.log("⚠️ Session ter-logout dari WhatsApp. Menghapus folder auth & minta QR baru...");
+        try {
+          fs.rmSync(authDir, { recursive: true, force: true });
+          console.log("📂 Folder auth dihapus, akan start ulang untuk QR baru.");
+        } catch (e) {
+          console.error("Gagal menghapus folder auth:", e);
+        }
+        // start ulang untuk QR baru
+        start();
+      } else {
+        const shouldReconnect = true;
+        console.log("Connection closed, reconnect:", shouldReconnect);
+        if (shouldReconnect) start();
+      }
     } else if (connection === "open") {
       console.log("✅ Bot sudah terhubung ke WhatsApp! (Baileys)");
     }
