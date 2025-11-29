@@ -1,7 +1,32 @@
 // commands/remini.js
-const sharp = require("sharp");
+
+// ==== coba load sharp ====
+let sharp;
+try {
+  sharp = require("sharp");
+} catch (e) {
+  sharp = null;
+  console.log(
+    "[remini] module 'sharp' tidak tersedia, fitur .remini akan dimatikan di environment ini."
+  );
+}
 
 module.exports = async ({ sock, msg, from, args, getMediaBuffer }) => {
+  // Kalau sharp tidak tersedia (mis. di Termux), jangan bikin bot crash
+  if (!sharp) {
+    await sock.sendMessage(
+      from,
+      {
+        text:
+          "Fitur *.remini* belum tersedia di environment ini.\n" +
+          "Diperlukan module *sharp* yang tidak bisa dipasang di Termux.\n" +
+          "Jalankan bot di laptop/server kalau ingin pakai fitur ini 😊",
+      },
+      { quoted: msg }
+    );
+    return;
+  }
+
   const media = await getMediaBuffer(msg);
   if (!media || media.type !== "imageMessage") {
     await sock.sendMessage(
@@ -10,8 +35,8 @@ module.exports = async ({ sock, msg, from, args, getMediaBuffer }) => {
         text:
           "Reply foto dengan *.remini*.\n" +
           "Format:\n" +
-          "• *.remini*  (level default)\n" +
-          "• *.remini 50*  (level 1–100, makin besar makin kuat)",
+          "• *.remini*          (level default)\n" +
+          "• *.remini 50*       (level 1–100, makin besar makin kuat)",
       },
       { quoted: msg }
     );
@@ -50,7 +75,6 @@ module.exports = async ({ sock, msg, from, args, getMediaBuffer }) => {
       fit: "inside",
       kernel: sharp.kernel.lanczos3,
     })
-
     // sedikit halusin noise dulu supaya nggak kasar
     .median(1); // semacam smoothing ringan
 
@@ -78,7 +102,7 @@ module.exports = async ({ sock, msg, from, args, getMediaBuffer }) => {
     from,
     {
       image: out,
-      caption: `✨ Remini level ${level} (reply dari foto agak blur biar kelihatan bedanya)`,
+      caption: `✨ Remini level ${level} (coba dari foto agak blur biar kelihatan bedanya)`,
     },
     { quoted: msg }
   );
