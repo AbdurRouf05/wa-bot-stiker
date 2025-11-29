@@ -1,8 +1,27 @@
 // commands/brat.js
-const { createCanvas } = require("canvas");
+
+let createCanvas;
+try {
+  // Coba load canvas (biasanya tersedia di PC/laptop)
+  ({ createCanvas } = require("canvas"));
+} catch (e) {
+  createCanvas = null;
+  console.log("[brat] module 'canvas' tidak tersedia, fitur .brat akan dimatikan di environment ini.");
+}
+
 const sharp = require("sharp");
 
 module.exports = async ({ sock, msg, from, args }) => {
+  // Kalau canvas tidak tersedia (mis. di Termux), jangan bikin bot crash
+  if (!createCanvas) {
+    await sock.sendMessage(
+      from,
+      { text: "Fitur *.brat* belum tersedia di Termux (module canvas tidak terpasang)." },
+      { quoted: msg }
+    );
+    return;
+  }
+
   const text = args.join(" ");
   if (!text) {
     await sock.sendMessage(
