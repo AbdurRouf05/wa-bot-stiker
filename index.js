@@ -46,6 +46,9 @@ async function start() {
   // path folder auth (session Baileys)
   const authDir = path.join(__dirname, "auth");
 
+  // Cek apakah pakai pairing code (nomor HP sebagai argument)
+  const phoneNumber = process.argv[2];
+
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
   // Ambil versi WA terbaru agar tidak kena 405
@@ -56,15 +59,33 @@ async function start() {
     version,
     auth: state,
     logger: P({ level: "silent" }),
-    printQRInTerminal: false, // kita pakai qrcode-terminal manual
-    browser: ["Abdbot", "Chrome", "1.0.0"],
+    printQRInTerminal: false,
+    browser: phoneNumber ? ["Chrome", "Chrome", "130.0.0"] : ["Abdbot", "Chrome", "1.0.0"],
   });
+
+  // ====== Pairing Code (untuk Termux) ======
+  if (phoneNumber && !sock.authState.creds.registered) {
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(phoneNumber);
+        console.log(`\n🔑 ═══════════════════════════════════`);
+        console.log(`🔑  PAIRING CODE: ${code}`);
+        console.log(`🔑 ═══════════════════════════════════`);
+        console.log(`\n📱 Buka WhatsApp → ⋮ → Perangkat tertaut`);
+        console.log(`   → Tautkan dengan nomor telepon`);
+        console.log(`   → Masukkan kode di atas\n`);
+      } catch (err) {
+        console.error("❌ Gagal request pairing code:", err.message);
+      }
+    }, 3000);
+  }
 
   // ====== QR & koneksi ======
   sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect, qr } = update;
 
-    if (qr) {
+    // Tampilkan QR hanya jika TIDAK pakai pairing code
+    if (qr && !phoneNumber) {
       console.log("=== Scan QR ini pakai WhatsApp HP kamu ===");
       qrcode.generate(qr, { small: true });
     }
