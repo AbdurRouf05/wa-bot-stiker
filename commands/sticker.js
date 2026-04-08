@@ -42,9 +42,8 @@ async function handleStickerCreate({ sock, msg, from, getMediaBuffer }) {
 
     await new Promise((resolve, reject) => {
       ff.outputOptions([
-        "-vf", "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=none,fps=15",
+        "-vf", "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=white@0,fps=15",
         "-c:v", "libwebp",
-        "-lossless", "1",
         "-loop", "0",
         "-an"
       ])
@@ -145,13 +144,18 @@ async function handleStickerToMP4({ sock, msg, from, downloadContentFromMessage 
 
     await new Promise((resolve, reject) => {
       ffmpeg(webpPath)
+        .inputOptions([
+          "-f", "webp",
+          "-analyzeduration", "10M",
+          "-probesize", "10M"
+        ])
         .outputOptions([
           "-pix_fmt", "yuv420p",
           "-c:v", "libx264",
           "-movflags", "faststart",
-          "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", // Paksa dimensi genap
+          "-vf", "scale='if(gt(iw,ih),512,-2)':'if(gt(ih,iw),512,-2)',pad=512:512:(512-iw)/2:(512-ih)/2:color=black",
           "-r", "20",
-          "-t", "8"
+          "-t", "10"
         ])
         .on("end", resolve)
         .on("error", (err, stdout, stderr) => {
