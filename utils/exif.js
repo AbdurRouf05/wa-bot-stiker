@@ -45,7 +45,7 @@ function addExifToWebpBuffer(webpBuffer, packName = STICKER_PACK, author = STICK
   const exifHeader = Buffer.from("EXIF");
   const exifSize = Buffer.alloc(4);
   exifSize.writeUInt32LE(exifData.length);
-  const exifChunk = Buffer.concat([exifHeader, exifSize, exifData]);
+  let exifChunk = Buffer.concat([exifHeader, exifSize, exifData]);
   if (exifChunk.length % 2 !== 0) exifChunk = Buffer.concat([exifChunk, Buffer.alloc(1)]);
 
   // 3. Identifikasi chunk data gambar (VP8, VP8L, atau ANIM)

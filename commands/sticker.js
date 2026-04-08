@@ -3,7 +3,6 @@ const fs = require("fs");
 const path = require("path");
 const ffmpeg = require("fluent-ffmpeg");
 const { addExifToWebpBuffer } = require("../utils/exif");
-const { spawn } = require("child_process");
 
 // Pastikan folder temp ada
 const TEMP_DIR = path.join(__dirname, "..", "temp");
@@ -145,7 +144,6 @@ async function handleStickerToMP4({ sock, msg, from, downloadContentFromMessage 
     await new Promise((resolve, reject) => {
       ffmpeg(webpPath)
         .inputOptions([
-          "-f", "webp",
           "-analyzeduration", "10M",
           "-probesize", "10M"
         ])
