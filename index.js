@@ -5,6 +5,7 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   downloadContentFromMessage,
+  fetchLatestBaileysVersion,
 } = require("@whiskeysockets/baileys");
 const qrcode = require("qrcode-terminal");
 const P = require("pino");
@@ -47,7 +48,12 @@ async function start() {
 
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
+  // Ambil versi WA terbaru agar tidak kena 405
+  const { version, isLatest } = await fetchLatestBaileysVersion();
+  console.log(`📡 Menggunakan WA v${version.join('.')}, isLatest: ${isLatest}`);
+
   const sock = makeWASocket({
+    version,
     auth: state,
     logger: P({ level: "silent" }),
     printQRInTerminal: false, // kita pakai qrcode-terminal manual
