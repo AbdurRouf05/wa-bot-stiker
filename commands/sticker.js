@@ -1,15 +1,13 @@
-// commands/sticker.js (dengan watermark EXIF metadata)
+// commands/sticker.js — Pembuatan Stiker & Konversi (Unified FFmpeg)
 const fs = require("fs");
 const path = require("path");
 const ffmpeg = require("fluent-ffmpeg");
 const { addExifToWebpBuffer } = require("../utils/exif");
+const { spawn } = require("child_process");
 
-// pastikan folder temp ada
+// Pastikan folder temp ada
 const TEMP_DIR = path.join(__dirname, "..", "temp");
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR);
-
-// helper untuk running command di Termux (spawn child process)
-const { spawn } = require("child_process");
 
 module.exports = async (ctx) => {
   const { cmd } = ctx;
@@ -18,78 +16,63 @@ module.exports = async (ctx) => {
   if (cmd === "tomp4") return handleStickerToMP4(ctx);
 };
 
-/* ===== .s: gambar/video → sticker ===== */
+/* ===== .s: Gambar/Video → Sticker (Unified FFmpeg) ===== */
 async function handleStickerCreate({ sock, msg, from, getMediaBuffer }) {
   const media = await getMediaBuffer(msg);
   if (!media) {
-    await sock.sendMessage(
-      from,
-      { text: "Reply media dengan *.s* untuk buat stiker." },
-      { quoted: msg }
-    );
+    await sock.sendMessage(from, { text: "Reply media dengan *.s* untuk buat stiker." }, { quoted: msg });
     return;
   }
 
-  // jika foto → convert ke webp pakai ImageMagick
-  if (media.type === "imageMessage") {
-    const inputPath = path.join(TEMP_DIR, Date.now() + ".png");
-    fs.writeFileSync(inputPath, media.buffer);
+  const fileId = Date.now();
+  const inputPath = path.join(TEMP_DIR, `${fileId}_in.${media.type.startsWith("image") ? "png" : "mp4"}`);
+  const webpPath = path.join(TEMP_DIR, `${fileId}_out.webp`);
+  
+  fs.writeFileSync(inputPath, media.buffer);
 
-    const webpPath = path.join(TEMP_DIR, Date.now() + ".webp");
+  try {
+    // Gunakan FFmpeg untuk semua jenis media (Gambar/Video)
+    // FFmpeg lebih handal dalam menangani transparansi dan metadata WebP
+    const ff = ffmpeg(inputPath);
+    
+    // Jika video, potong maksimal 7 detik
+    if (media.type === "videoMessage") {
+      ff.inputOptions(["-t", "7"]);
+    }
 
     await new Promise((resolve, reject) => {
-      const p = spawn("convert", [inputPath, "-resize", "512x512", webpPath]);
-      p.on("close", (code) => code === 0 ? resolve() : reject());
+      ff.outputOptions([
+        "-vf", "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=none,fps=15",
+        "-c:v", "libwebp",
+        "-lossless", "1",
+        "-loop", "0",
+        "-an"
+      ])
+      .on("end", resolve)
+      .on("error", (err) => reject(new Error(`FFmpeg error: ${err.message}`)))
+      .save(webpPath);
     });
 
-    // Baca file lalu tambahkan EXIF metadata
+    // Baca hasil, tambahkan EXIF, lalu kirim
     const rawBuffer = fs.readFileSync(webpPath);
-    const webpBuffer = addExifToWebpBuffer(rawBuffer);
-    await sock.sendMessage(from, { sticker: webpBuffer }, { quoted: msg });
+    const stickerBuffer = addExifToWebpBuffer(rawBuffer);
+    
+    await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: msg });
 
-    fs.unlinkSync(inputPath);
-    fs.unlinkSync(webpPath);
-    return;
+  } catch (err) {
+    console.error("❌ Sticker error:", err.message);
+    await sock.sendMessage(from, { text: "❌ Gagal membuat stiker." }, { quoted: msg });
+  } finally {
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.unlinkSync(webpPath); } catch {}
   }
-
-  // jika video → fluent-ffmpeg sudah otomatis pakai FFmpeg sistem
-  if (media.type === "videoMessage") {
-    const inputPath = path.join(TEMP_DIR, Date.now() + ".mp4");
-    const stickerPath = path.join(TEMP_DIR, Date.now() + ".webp");
-
-    fs.writeFileSync(inputPath, media.buffer);
-
-    await new Promise((resolve, reject) => {
-      ffmpeg(inputPath)
-        .inputOptions(["-t", "7"])
-        .outputOptions([
-          "-vf",
-          "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=white,fps=14",
-          "-c:v", "libwebp", "-loop", "0", "-an"
-        ])
-        .on("end", resolve)
-        .on("error", reject)
-        .save(stickerPath);
-    });
-
-    // Baca file lalu tambahkan EXIF metadata
-    const rawBuffer = fs.readFileSync(stickerPath);
-    const webpBuffer = addExifToWebpBuffer(rawBuffer);
-    await sock.sendMessage(from, { sticker: webpBuffer }, { quoted: msg });
-
-    fs.unlinkSync(inputPath);
-    fs.unlinkSync(stickerPath);
-    return;
-  }
-
-  await sock.sendMessage(from, { text: "Tipe media belum didukung untuk stiker." }, { quoted: msg });
 }
 
-/* ===== Helper: ambil buffer stiker (langsung atau reply) ===== */
+/* ===== Helper: Ambil buffer stiker (Langsung atau Reply) ===== */
 async function getStickerBuffer({ msg, downloadContentFromMessage }) {
   let stickerMsg = msg.message?.stickerMessage;
 
-  // Cek kalau user reply ke stiker
+  // Cek jika reply ke stiker
   if (!stickerMsg) {
     const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
     stickerMsg = quoted?.stickerMessage;
@@ -97,60 +80,65 @@ async function getStickerBuffer({ msg, downloadContentFromMessage }) {
 
   if (!stickerMsg) return null;
 
-  // Download stiker pakai downloadContentFromMessage
-  const stream = await downloadContentFromMessage(stickerMsg, "sticker");
-  let buffer = Buffer.from([]);
-  for await (const chunk of stream) {
-    buffer = Buffer.concat([buffer, chunk]);
+  try {
+    const stream = await downloadContentFromMessage(stickerMsg, "sticker");
+    let buffer = Buffer.from([]);
+    for await (const chunk of stream) {
+      buffer = Buffer.concat([buffer, chunk]);
+    }
+    return { buffer, isAnimated: stickerMsg.isAnimated || false };
+  } catch (err) {
+    console.error("❌ Download sticker failed:", err.message);
+    return null;
   }
-
-  return { buffer, isAnimated: stickerMsg.isAnimated || false };
 }
 
-/* ===== .toimg: sticker → gambar JPG ===== */
+/* ===== .toimg: Sticker → Gambar JPG ===== */
 async function handleStickerToImage({ sock, msg, from, downloadContentFromMessage }) {
   const sticker = await getStickerBuffer({ msg, downloadContentFromMessage });
   if (!sticker) {
-    await sock.sendMessage(from, { text: "Kirim atau reply stiker dengan *.toimg* / *.img*." }, { quoted: msg });
+    await sock.sendMessage(from, { text: "Reply stiker dengan *.toimg*." }, { quoted: msg });
     return;
   }
 
   const fileId = Date.now();
-  const webpPath = path.join(TEMP_DIR, fileId + ".webp");
-  const jpgPath = path.join(TEMP_DIR, fileId + ".jpg");
+  const webpPath = path.join(TEMP_DIR, `${fileId}.webp`);
+  const jpgPath = path.join(TEMP_DIR, `${fileId}.jpg`);
 
   try {
     fs.writeFileSync(webpPath, sticker.buffer);
 
-    // convert pakai ImageMagick
+    // Gunakan FFmpeg untuk konversi stiker ke gambar (frame pertama)
     await new Promise((resolve, reject) => {
-      const p = spawn("convert", [webpPath + "[0]", "-resize", "512x512", jpgPath]);
-      p.on("close", (code) => code === 0 ? resolve() : reject(new Error("ImageMagick convert gagal")));
-      p.on("error", reject);
+      ffmpeg(webpPath)
+        .frames(1)
+        .save(jpgPath)
+        .on("end", resolve)
+        .on("error", reject);
     });
 
     const jpgBuffer = fs.readFileSync(jpgPath);
-    await sock.sendMessage(from, { image: jpgBuffer, caption: "✅ Stiker → Gambar\n🤖 *Abd Bot*" }, { quoted: msg });
+    await sock.sendMessage(from, { image: jpgBuffer, caption: "✅ Berhasil konversi stiker ke gambar." }, { quoted: msg });
   } catch (err) {
     console.error("❌ toimg error:", err.message);
-    await sock.sendMessage(from, { text: "❌ Gagal convert stiker ke gambar." }, { quoted: msg });
+    await sock.sendMessage(from, { text: "❌ Gagal konversi ke gambar." }, { quoted: msg });
   } finally {
     try { fs.unlinkSync(webpPath); } catch {}
     try { fs.unlinkSync(jpgPath); } catch {}
   }
 }
 
-/* ===== .tomp4: sticker → video MP4 ===== */
+/* ===== .tomp4: Sticker → Video MP4 ===== */
 async function handleStickerToMP4({ sock, msg, from, downloadContentFromMessage }) {
   const sticker = await getStickerBuffer({ msg, downloadContentFromMessage });
   if (!sticker) {
-    await sock.sendMessage(from, { text: "Kirim atau reply stiker dengan *.tomp4*." }, { quoted: msg });
+    await sock.sendMessage(from, { text: "Reply stiker animasi dengan *.tomp4*." }, { quoted: msg });
     return;
   }
 
   const fileId = Date.now();
-  const webpPath = path.join(TEMP_DIR, fileId + ".webp");
-  const mp4Path = path.join(TEMP_DIR, fileId + ".mp4");
+  const webpPath = path.join(TEMP_DIR, `${fileId}.webp`);
+  const mp4Path = path.join(TEMP_DIR, `${fileId}.mp4`);
 
   try {
     fs.writeFileSync(webpPath, sticker.buffer);
@@ -161,24 +149,25 @@ async function handleStickerToMP4({ sock, msg, from, downloadContentFromMessage 
           "-pix_fmt", "yuv420p",
           "-c:v", "libx264",
           "-movflags", "faststart",
-          "-t", "7",
-          "-vf", "scale=512:512:flags=lanczos",
-          "-r", "15",
-          "-an"
+          "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", // Paksa dimensi genap
+          "-r", "20",
+          "-t", "8"
         ])
         .on("end", resolve)
-        .on("error", reject)
+        .on("error", (err, stdout, stderr) => {
+          console.error("FFmpeg ToMP4 error:", stderr);
+          reject(err);
+        })
         .save(mp4Path);
     });
 
     const mp4Buffer = fs.readFileSync(mp4Path);
-    await sock.sendMessage(from, { video: mp4Buffer, caption: "✅ Stiker → Video\n🤖 *Abd Bot*", mimetype: "video/mp4" }, { quoted: msg });
+    await sock.sendMessage(from, { video: mp4Buffer, caption: "✅ Berhasil konversi stiker ke video.", mimetype: "video/mp4" }, { quoted: msg });
   } catch (err) {
     console.error("❌ tomp4 error:", err.message);
-    await sock.sendMessage(from, { text: "❌ Gagal convert stiker ke video." }, { quoted: msg });
+    await sock.sendMessage(from, { text: "❌ Gagal konversi stiker animasi ke video." }, { quoted: msg });
   } finally {
     try { fs.unlinkSync(webpPath); } catch {}
     try { fs.unlinkSync(mp4Path); } catch {}
   }
 }
-
