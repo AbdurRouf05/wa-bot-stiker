@@ -1,7 +1,8 @@
-// commands/sticker.js (tanpa sharp, pakai ImageMagick saja)
+// commands/sticker.js (dengan watermark EXIF metadata)
 const fs = require("fs");
 const path = require("path");
 const ffmpeg = require("fluent-ffmpeg");
+const { addExifToWebp, addExifToWebpBuffer } = require("../utils/exif");
 
 // pastikan folder temp ada
 const TEMP_DIR = path.join(__dirname, "..", "temp");
@@ -41,7 +42,8 @@ async function handleStickerCreate({ sock, msg, from, getMediaBuffer }) {
       p.on("close", (code) => code === 0 ? resolve() : reject());
     });
 
-    const webpBuffer = fs.readFileSync(webpPath);
+    // Tambahkan watermark EXIF metadata
+    const webpBuffer = addExifToWebp(webpPath);
     await sock.sendMessage(from, { sticker: webpBuffer }, { quoted: msg });
 
     fs.unlinkSync(inputPath);
@@ -69,7 +71,8 @@ async function handleStickerCreate({ sock, msg, from, getMediaBuffer }) {
         .save(stickerPath);
     });
 
-    const webpBuffer = fs.readFileSync(stickerPath);
+    // Tambahkan watermark EXIF metadata
+    const webpBuffer = addExifToWebp(stickerPath);
     await sock.sendMessage(from, { sticker: webpBuffer }, { quoted: msg });
 
     fs.unlinkSync(inputPath);
