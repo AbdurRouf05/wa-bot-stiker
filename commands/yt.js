@@ -1,6 +1,5 @@
-// commands/yt.js - YouTube Downloader (Updated API)
-const qs = require('querystring');
-const http = require('https');
+// commands/yt.js - YouTube Downloader (Updated to YTStream API)
+const fetch = require('node-fetch');
 
 module.exports = async ({ sock, msg, from, args }) => {
   if (args.length === 0) {
@@ -14,11 +13,12 @@ module.exports = async ({ sock, msg, from, args }) => {
   }
 
   const url = args[0];
+  const videoId = getYoutubeId(url);
 
-  if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+  if (!videoId) {
     return await sock.sendMessage(
       from,
-      { text: "❌ URL YouTube tidak valid!" },
+      { text: "❌ URL YouTube tidak valid! Mohon masukkan link video yang benar." },
       { quoted: msg }
     );
   }
@@ -30,145 +30,57 @@ module.exports = async ({ sock, msg, from, args }) => {
       { quoted: msg }
     );
 
-    // Konfigurasi API baru
+    // API YTStream (Berdasarkan screenshot pengguna)
+    const apiUrl = `https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`;
     const options = {
-      method: 'POST',
-      hostname: 'youtube-video-downloader50.p.rapidapi.com',
-      port: null,
-      path: '/download.php',
+      method: 'GET',
       headers: {
         'x-rapidapi-key': 'c60a569d9bmshc8784a5743699a0p10423cjsn8b083ea602a2',
-        'x-rapidapi-host': 'youtube-video-downloader50.p.rapidapi.com',
-        'Content-Type': 'application/x-www-form-urlencoded'
+        'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
       }
     };
 
-    // Kirim request ke API
-    const req = http.request(options, function (res) {
-      const chunks = [];
+    console.log('Mengambil data dari API YTStream...');
+    const response = await fetch(apiUrl, options);
+    const data = await response.json();
 
-      res.on('data', function (chunk) {
-        chunks.push(chunk);
-      });
+    if (data.status !== 'OK' && !data.link && (!data.formats || data.formats.length === 0)) {
+       throw new Error(data.msg || 'Gagal mendapatkan link download dari API.');
+    }
 
-      res.on('end', function () {
-        try {
-          const body = Buffer.concat(chunks);
-          const responseText = body.toString();
-          
-          console.log('Raw API Response:', responseText);
+    // Ambil link download (mendukung format .link atau .formats)
+    // Biasanya YTStream memberikan format terbaik di .link atau list di .formats
+    let videoUrl = data.link;
+    const title = data.title || 'YouTube Video';
 
-          // Parse response JSON
-          let responseData;
-          try {
-            responseData = JSON.parse(responseText);
-          } catch (parseError) {
-            console.error('JSON Parse Error:', parseError);
-            throw new Error('Format response API tidak valid');
-          }
-
-          // Proses response untuk mendapatkan URL video
-          processVideoResponse(sock, from, msg, responseData);
-
-        } catch (error) {
-          console.error('Response Processing Error:', error);
-          sock.sendMessage(
-            from,
-            { 
-              text: `❌ *Error memproses response:*\n${error.message}` 
-            },
-            { quoted: msg }
-          );
-        }
-      });
-    });
-
-    // Handle request errors
-    req.on('error', function (error) {
-      console.error('Request Error:', error);
-      sock.sendMessage(
-        from,
-        { 
-          text: `❌ *Error koneksi:*\n${error.message}` 
-        },
-        { quoted: msg }
-      );
-    });
-
-    // Kirim data URL YouTube ke API
-    const postData = qs.stringify({
-      url: url
-    });
-
-    req.write(postData);
-    req.end();
-
-  } catch (error) {
-    console.error('YouTube Download Error:', error);
-    await sock.sendMessage(
-      from,
-      { 
-        text: `❌ *Gagal memproses request:*\n${error.message}` 
-      },
-      { quoted: msg }
-    );
-  }
-};
-
-// Fungsi untuk memproses response video
-async function processVideoResponse(sock, from, msg, responseData) {
-  try {
-    let videoUrl, videoTitle = 'YouTube Video';
-
-    // Analisis struktur response yang mungkin
-    if (responseData.download_url) {
-      videoUrl = responseData.download_url;
-    } else if (responseData.url) {
-      videoUrl = responseData.url;
-    } else if (responseData.video_url) {
-      videoUrl = responseData.video_url;
-    } else if (responseData.links && responseData.links.video) {
-      videoUrl = responseData.links.video;
-    } else if (responseData.formats && responseData.formats.length > 0) {
-      // Jika API mengembalikan multiple format
-      const videoFormat = responseData.formats.find(f => f.hasVideo && f.hasAudio);
-      if (videoFormat && videoFormat.url) {
-        videoUrl = videoFormat.url;
-      }
-    } else if (responseData.direct_url) {
-      videoUrl = responseData.direct_url;
+    if (!videoUrl && data.formats && data.formats.length > 0) {
+        // Cari format video + audio (mp4)
+        const bestFormat = data.formats.find(f => f.qualityLabel && f.url);
+        if (bestFormat) videoUrl = bestFormat.url;
     }
 
     if (!videoUrl) {
-      console.log('Struktur response:', JSON.stringify(responseData, null, 2));
-      throw new Error('Tidak bisa menemukan URL video dalam response API');
+        throw new Error('Tidak bisa menemukan URL video yang valid dalam response.');
     }
 
-    await sock.sendMessage(
-      from,
-      { text: `📥 *Video ditemukan!*\n⏳ Sedang mendownload...` },
-      { quoted: msg }
-    );
-
-    console.log('Download dari:', videoUrl);
-    
-    // Download video
+    // Download video buffer
     const videoResponse = await fetch(videoUrl);
-    
     if (!videoResponse.ok) {
-      throw new Error(`Gagal download video: HTTP ${videoResponse.status}`);
+        throw new Error(`Gagal mendownload file video: HTTP ${videoResponse.status}`);
     }
 
     const videoBuffer = await videoResponse.buffer();
     const fileSize = videoBuffer.length;
 
-    if (fileSize > 90 * 1024 * 1024) {
+    if (fileSize > 100 * 1024 * 1024) {
       await sock.sendMessage(
         from,
-        { text: `❌ Video terlalu besar! (${(fileSize / (1024*1024)).toFixed(1)}MB)` }
+        { text: `❌ Video terlalu besar! (${(fileSize / (1024*1024)).toFixed(1)}MB). Maksimal 100MB.` }
       );
       return;
     }
+
+    const caption = `✅ *YouTube Download Selesai!*\n📌 *Judul:* ${title}\n👤 *ID:* ${videoId}`;
 
     // Kirim video
     if (fileSize < 16 * 1024 * 1024) {
@@ -176,8 +88,8 @@ async function processVideoResponse(sock, from, msg, responseData) {
         from,
         { 
           video: videoBuffer,
-          caption: "✅ *YouTube Download Selesai!*",
-          fileName: `youtube_${Date.now()}.mp4`
+          caption: caption,
+          fileName: `${videoId}.mp4`
         },
         { quoted: msg }
       );
@@ -186,8 +98,8 @@ async function processVideoResponse(sock, from, msg, responseData) {
         from,
         { 
           document: videoBuffer,
-          caption: "✅ *YouTube Download Selesai!*\n📁 Dikirim sebagai document",
-          fileName: `youtube_${Date.now()}.mp4`,
+          caption: caption + '\n📁 Dikirim sebagai document',
+          fileName: `${videoId}.mp4`,
           mimetype: 'video/mp4'
         },
         { quoted: msg }
@@ -195,13 +107,22 @@ async function processVideoResponse(sock, from, msg, responseData) {
     }
 
   } catch (error) {
-    console.error('Video Processing Error:', error);
+    console.error('YouTube Fix Error:', error);
     await sock.sendMessage(
       from,
       { 
-        text: `❌ *Gagal memproses video:*\n${error.message}` 
+        text: `❌ *Gagal download YouTube!* \nError: ${error.message}\n\n💡 *Cek:*\n• Pastikan link video benar\n• Coba lagi beberapa saat lagi` 
       },
       { quoted: msg }
     );
   }
+};
+
+/**
+ * Helper untuk ambil YouTube ID dari URL
+ */
+function getYoutubeId(url) {
+    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
+    const match = url.match(regex);
+    return match ? match[1] : null;
 }
