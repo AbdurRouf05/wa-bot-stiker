@@ -99,19 +99,15 @@ async function start() {
       const isLoggedOut = statusCode === DisconnectReason.loggedOut;
 
       if (isLoggedOut) {
-        console.log("⚠️ Session ter-logout dari WhatsApp. Menghapus folder auth & minta QR baru...");
+        console.log("⚠️ Session ter-logout. Menghapus folder auth & start ulang...");
         try {
           fs.rmSync(authDir, { recursive: true, force: true });
-          console.log("📂 Folder auth dihapus, akan start ulang untuk QR baru.");
-        } catch (e) {
-          console.error("Gagal menghapus folder auth:", e);
-        }
-        // start ulang untuk QR baru
-        start();
+        } catch (e) {}
+        console.log("🔄 Restart dalam 3 detik...");
+        setTimeout(() => start(), 3000);
       } else {
-        const shouldReconnect = true;
-        console.log("Connection closed, reconnect:", shouldReconnect);
-        if (shouldReconnect) start();
+        console.log("🔄 Reconnect dalam 5 detik...");
+        setTimeout(() => start(), 5000);
       }
     } else if (connection === "open") {
       console.log("✅ Bot sudah terhubung ke WhatsApp! (Baileys)");
