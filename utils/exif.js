@@ -1,14 +1,11 @@
 // utils/exif.js — Tambahkan metadata EXIF ke stiker WebP
-const fs = require("fs");
-const path = require("path");
+// Menggunakan format yang kompatibel dengan WhatsApp
 
-// Sticker metadata
 const STICKER_PACK = "Abd Bot";
 const STICKER_AUTHOR = "wa.me/6283854136611";
 
 /**
  * Buat EXIF buffer untuk stiker WhatsApp
- * Format: JSON metadata yang di-embed ke WebP via RIFF chunk
  */
 function buildStickerExif(packName = STICKER_PACK, author = STICKER_AUTHOR) {
   const json = JSON.stringify({
@@ -16,73 +13,63 @@ function buildStickerExif(packName = STICKER_PACK, author = STICKER_AUTHOR) {
     "sticker-pack-name": packName,
     "sticker-pack-publisher": author,
     "emojis": ["😎"],
-    "is-avatar-sticker": 0,
-    "android-app-store-link": "",
-    "ios-app-store-link": "",
   });
 
-  // Header EXIF untuk WebP
-  const exifAttr = Buffer.from([
-    0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x41, 0x57,
-    0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00,
-  ]);
+  const data = Buffer.from(json, "utf-8");
 
-  const jsonBuf = Buffer.from(json, "utf-8");
-  // Set panjang JSON di EXIF header
-  exifAttr.writeUIntLE(jsonBuf.length, 14, 4);
+  const exif = Buffer.alloc(data.length + 22);
 
-  return Buffer.concat([exifAttr, jsonBuf]);
+  // Little-endian TIFF header
+  exif.write("II", 0);                     // byte order
+  exif.writeUInt16LE(0x002a, 2);            // TIFF magic
+  exif.writeUInt32LE(8, 4);                 // offset to IFD
+
+  // IFD with 1 entry
+  exif.writeUInt16LE(1, 8);                 // number of entries
+
+  // IFD entry: tag 0x5741 ("WA"), type UNDEFINED (7)
+  exif.writeUInt16LE(0x5741, 10);           // tag
+  exif.writeUInt16LE(7, 12);                // type = UNDEFINED
+  exif.writeUInt32LE(data.length, 14);      // count
+  exif.writeUInt32LE(22, 18);               // offset to data
+
+  // JSON data
+  data.copy(exif, 22);
+
+  return exif;
 }
 
 /**
- * Tambahkan EXIF metadata ke file WebP
- * @param {string} webpPath - Path ke file WebP
+ * Tambahkan EXIF metadata ke buffer WebP
+ * @param {Buffer} webpBuffer - Buffer WebP asli
  * @param {string} packName - Nama sticker pack
- * @param {string} author - Nama author/publisher
- * @returns {Buffer} WebP buffer dengan EXIF metadata
- */
-function addExifToWebp(webpPath, packName = STICKER_PACK, author = STICKER_AUTHOR) {
-  const webpBuf = fs.readFileSync(webpPath);
-  const exifData = buildStickerExif(packName, author);
-
-  // Buat RIFF chunk "EXIF"
-  const exifChunkHeader = Buffer.alloc(8);
-  exifChunkHeader.write("EXIF", 0);
-  exifChunkHeader.writeUInt32LE(exifData.length, 4);
-
-  // Hitung total ukuran file baru
-  const newFileSize =
-    webpBuf.length + exifChunkHeader.length + exifData.length;
-
-  // Update ukuran RIFF di header WebP (byte 4-7)
-  const result = Buffer.concat([webpBuf, exifChunkHeader, exifData]);
-  result.writeUInt32LE(newFileSize - 8, 4);
-
-  return result;
-}
-
-/**
- * Tambahkan EXIF metadata ke buffer WebP (tanpa perlu file)
- * @param {Buffer} webpBuffer - Buffer WebP
- * @param {string} packName - Nama sticker pack
- * @param {string} author - Nama author/publisher
- * @returns {Buffer} WebP buffer dengan EXIF metadata
+ * @param {string} author - Nama author
+ * @returns {Buffer} WebP buffer dengan EXIF
  */
 function addExifToWebpBuffer(webpBuffer, packName = STICKER_PACK, author = STICKER_AUTHOR) {
+  // Validasi: pastikan ini file WebP
+  if (webpBuffer.slice(0, 4).toString() !== "RIFF" || webpBuffer.slice(8, 12).toString() !== "WEBP") {
+    console.warn("[exif] Bukan file WebP valid, skip EXIF");
+    return webpBuffer;
+  }
+
   const exifData = buildStickerExif(packName, author);
 
-  // Buat RIFF chunk "EXIF"
-  const exifChunkHeader = Buffer.alloc(8);
-  exifChunkHeader.write("EXIF", 0);
-  exifChunkHeader.writeUInt32LE(exifData.length, 4);
+  // Buat chunk EXIF
+  const chunkId = Buffer.from("EXIF");
+  const chunkSize = Buffer.alloc(4);
+  chunkSize.writeUInt32LE(exifData.length);
 
-  // Gabungkan WebP + EXIF chunk
-  const result = Buffer.concat([webpBuffer, exifChunkHeader, exifData]);
+  // Padding byte jika ukuran ganjil
+  const padding = exifData.length % 2 !== 0 ? Buffer.alloc(1) : Buffer.alloc(0);
 
-  // Update ukuran RIFF di header WebP
+  // Gabungkan: WebP original + EXIF chunk
+  const result = Buffer.concat([webpBuffer, chunkId, chunkSize, exifData, padding]);
+
+  // Update RIFF file size (byte 4-7)
   result.writeUInt32LE(result.length - 8, 4);
 
   return result;
 }
 
-module.exports = { addExifToWebp, addExifToWebpBuffer, STICKER_PACK, STICKER_AUTHOR };
+module.exports = { addExifToWebpBuffer, STICKER_PACK, STICKER_AUTHOR };

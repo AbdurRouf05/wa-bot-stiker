@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const ffmpeg = require("fluent-ffmpeg");
-const { addExifToWebp, addExifToWebpBuffer } = require("../utils/exif");
+const { addExifToWebpBuffer } = require("../utils/exif");
 
 // pastikan folder temp ada
 const TEMP_DIR = path.join(__dirname, "..", "temp");
@@ -42,8 +42,9 @@ async function handleStickerCreate({ sock, msg, from, getMediaBuffer }) {
       p.on("close", (code) => code === 0 ? resolve() : reject());
     });
 
-    // Tambahkan watermark EXIF metadata
-    const webpBuffer = addExifToWebp(webpPath);
+    // Baca file lalu tambahkan EXIF metadata
+    const rawBuffer = fs.readFileSync(webpPath);
+    const webpBuffer = addExifToWebpBuffer(rawBuffer);
     await sock.sendMessage(from, { sticker: webpBuffer }, { quoted: msg });
 
     fs.unlinkSync(inputPath);
@@ -71,8 +72,9 @@ async function handleStickerCreate({ sock, msg, from, getMediaBuffer }) {
         .save(stickerPath);
     });
 
-    // Tambahkan watermark EXIF metadata
-    const webpBuffer = addExifToWebp(stickerPath);
+    // Baca file lalu tambahkan EXIF metadata
+    const rawBuffer = fs.readFileSync(stickerPath);
+    const webpBuffer = addExifToWebpBuffer(rawBuffer);
     await sock.sendMessage(from, { sticker: webpBuffer }, { quoted: msg });
 
     fs.unlinkSync(inputPath);
@@ -142,12 +144,7 @@ async function handleStickerToImage({ sock, msg, from, downloadContentFromMessag
 async function handleStickerToMP4({ sock, msg, from, downloadContentFromMessage }) {
   const sticker = await getStickerBuffer({ msg, downloadContentFromMessage });
   if (!sticker) {
-    await sock.sendMessage(from, { text: "Kirim atau reply stiker *animasi* dengan *.tomp4*." }, { quoted: msg });
-    return;
-  }
-
-  if (!sticker.isAnimated) {
-    await sock.sendMessage(from, { text: "⚠️ Stiker ini bukan animasi. Pakai *.toimg* untuk convert ke gambar." }, { quoted: msg });
+    await sock.sendMessage(from, { text: "Kirim atau reply stiker dengan *.tomp4*." }, { quoted: msg });
     return;
   }
 
