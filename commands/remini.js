@@ -1,7 +1,7 @@
 // commands/remini.js - Photo Enhance (Powered by RapidAPI)
-const fetch = require('node-fetch');
+import fetch from 'node-fetch';
 
-module.exports = async ({ sock, msg, from, args, getMediaBuffer }) => {
+export default async ({ sock, from, msg, getMediaBuffer }) => {
   const media = await getMediaBuffer(msg);
   
   if (!media || media.type !== "imageMessage") {
@@ -24,7 +24,7 @@ module.exports = async ({ sock, msg, from, args, getMediaBuffer }) => {
     // 1. Konversi Buffer ke Base64 (API butuh base64 tanpa prefix)
     const base64Image = media.buffer.toString('base64');
 
-    // 2. Konfigurasi API (Berdasarkan screenshot pengguna)
+    // 2. Konfigurasi API
     const apiUrl = 'https://photo-enhance-api.p.rapidapi.com/api/scale';
     const requestBody = {
       image_base64: base64Image,
@@ -53,14 +53,12 @@ module.exports = async ({ sock, msg, from, args, getMediaBuffer }) => {
     const data = await response.json();
     console.log('API Enhance berhasil merespons.');
 
-    // 3. Ambil hasil (Biasanya ada di data_base64 atau link)
+    // 3. Ambil hasil
     let resultBuffer;
     
     if (data.data_base64) {
-      // Jika balikannya base64
       resultBuffer = Buffer.from(data.data_base64, 'base64');
     } else if (data.url || data.link) {
-      // Jika balikannya URL
       const resImg = await fetch(data.url || data.link);
       resultBuffer = await resImg.buffer();
     } else if (data.image_base64) {

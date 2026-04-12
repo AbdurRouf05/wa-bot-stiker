@@ -1,4 +1,6 @@
 // commands/brat.js
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 
 // ==== coba load canvas (buat gambar) ====
 let createCanvas;
@@ -22,7 +24,7 @@ try {
   );
 }
 
-module.exports = async ({ sock, msg, from, args }) => {
+export default async ({ sock, msg, from, args }) => {
   // Kalau salah satu tidak ada (Termux), jangan bikin bot crash
   if (!createCanvas || !sharp) {
     await sock.sendMessage(

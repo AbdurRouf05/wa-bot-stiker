@@ -1,17 +1,32 @@
-require("dotenv").config();
-const {
-  default: makeWASocket,
+import "dotenv/config";
+import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
   downloadContentFromMessage,
   fetchLatestBaileysVersion,
-} = require("@whiskeysockets/baileys");
-const qrcode = require("qrcode-terminal");
-const P = require("pino");
-const path = require("path");
-const fs = require("fs");
-const express = require("express");
-const { tmp, getMediaBuffer } = require("./utils");
+} from "@whiskeysockets/baileys";
+import qrcode from "qrcode-terminal";
+import P from "pino";
+import path from "path";
+import fs from "fs";
+import express from "express";
+import { fileURLToPath } from "url";
+import { tmp, getMediaBuffer } from "./utils.js";
+
+// Import all commands (ESM requires .js extension)
+import menu from "./commands/menu.js";
+import sticker from "./commands/sticker.js";
+import brat from "./commands/brat.js";
+import qc from "./commands/qc.js";
+import deleteCmd from "./commands/delete.js";
+import hidetag from "./commands/hidetag.js";
+import remini from "./commands/remini.js";
+import yt from "./commands/yt.js";
+import tiktok from "./commands/tiktok.js";
+import ig from "./commands/ig.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ====== Web Server (for Cloud) ======
 const app = express();
@@ -21,19 +36,19 @@ app.listen(port, () => console.log(`🌍 Server berjalan di port ${port}`));
 
 // Daftar command
 const commands = {
-  menu: require("./commands/menu"),
-  s: require("./commands/sticker"),
-  toimg: require("./commands/sticker"),
-  img: require("./commands/sticker"),
-  tomp4: require("./commands/sticker"),
-  brat: require("./commands/brat"),
-  qc: require("./commands/qc"),
-  delete: require("./commands/delete"),
-  hidetag: require("./commands/hidetag"),
-  remini: require("./commands/remini"),
-  yt: require("./commands/yt"),
-  tt: require("./commands/tiktok"),
-  ig: require("./commands/ig"),
+  menu,
+  s: sticker,
+  toimg: sticker,
+  img: sticker,
+  tomp4: sticker,
+  brat,
+  qc,
+  delete: deleteCmd,
+  hidetag,
+  remini,
+  yt,
+  tt: tiktok,
+  ig,
 };
 
 // helper: ambil teks dari berbagai tipe message
@@ -74,7 +89,15 @@ async function start() {
   const { version, isLatest } = await fetchLatestBaileysVersion();
   console.log(`📡 Menggunakan WA v${version.join(".")}, isLatest: ${isLatest}`);
 
-  const sock = makeWASocket({
+  const sock = makeWASocket.default ? makeWASocket.default({
+    version,
+    auth: state,
+    logger: P({ level: "silent" }),
+    printQRInTerminal: false,
+    browser: phoneNumber
+      ? ["Chrome", "Chrome", "130.0.0"]
+      : ["Abdbot", "Chrome", "1.0.0"],
+  }) : makeWASocket({
     version,
     auth: state,
     logger: P({ level: "silent" }),
@@ -184,11 +207,7 @@ async function start() {
 
     const handler = commands[cmd];
     if (!handler) {
-      await sock.sendMessage(
-        from,
-        { text: "❌ Command tidak dikenal.\nKetik *.menu*" },
-        { quoted: msg }
-      );
+      // Hilangkan saja auto-reply biar tidak mengganggu
       return;
     }
 

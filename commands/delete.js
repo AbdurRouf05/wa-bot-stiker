@@ -1,5 +1,5 @@
 // commands/delete.js
-module.exports = async ({ sock, msg, from }) => {
+export default async ({ sock, msg, from }) => {
   const m = msg.message?.extendedTextMessage;
   const ctx = m?.contextInfo;
   if (!ctx?.stanzaId || !ctx?.participant) {

@@ -6,7 +6,7 @@ const STICKER_AUTHOR = process.env.STICKER_AUTHOR || "Bot";
  * Tambahkan EXIF metadata ke buffer WebP.
  * Jika gagal, return buffer asli tanpa EXIF (graceful degradation).
  */
-function addExifToWebpBuffer(webpBuffer, packName = STICKER_PACK, author = STICKER_AUTHOR) {
+export function addExifToWebpBuffer(webpBuffer, packName = STICKER_PACK, author = STICKER_AUTHOR) {
   try {
     // Validasi WebP
     if (!webpBuffer || webpBuffer.length < 12) return webpBuffer;
@@ -56,4 +56,4 @@ function addExifToWebpBuffer(webpBuffer, packName = STICKER_PACK, author = STICK
   }
 }
 
-module.exports = { addExifToWebpBuffer, STICKER_PACK, STICKER_AUTHOR };
+export { STICKER_PACK, STICKER_AUTHOR };
