@@ -3,6 +3,13 @@ FROM node:20-slim
 # Install system dependencies (FFmpeg for stickers)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    imagemagick \
+    build-essential \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libjpeg-dev \
+    libgif-dev \
+    librsvg2-dev \
     libwebp-dev \
     git \
     && rm -rf /var/lib/apt/lists/*
