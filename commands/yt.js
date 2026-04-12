@@ -1,7 +1,16 @@
 // commands/yt.js - YouTube Downloader (Updated to YTStream API)
-const fetch = require('node-fetch');
+import fetch from 'node-fetch';
 
-module.exports = async ({ sock, msg, from, args }) => {
+/**
+ * Helper untuk ambil YouTube ID dari URL
+ */
+function getYoutubeId(url) {
+    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
+    const match = url.match(regex);
+    return match ? match[1] : null;
+}
+
+export default async ({ sock, from, msg, args }) => {
   if (args.length === 0) {
     return await sock.sendMessage(
       from,
@@ -30,7 +39,7 @@ module.exports = async ({ sock, msg, from, args }) => {
       { quoted: msg }
     );
 
-    // API YTStream (Berdasarkan screenshot pengguna)
+    // API YTStream
     const apiUrl = `https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`;
     const options = {
       method: 'GET',
@@ -48,13 +57,10 @@ module.exports = async ({ sock, msg, from, args }) => {
        throw new Error(data.msg || 'Gagal mendapatkan link download dari API.');
     }
 
-    // Ambil link download (mendukung format .link atau .formats)
-    // Biasanya YTStream memberikan format terbaik di .link atau list di .formats
     let videoUrl = data.link;
     const title = data.title || 'YouTube Video';
 
     if (!videoUrl && data.formats && data.formats.length > 0) {
-        // Cari format video + audio (mp4)
         const bestFormat = data.formats.find(f => f.qualityLabel && f.url);
         if (bestFormat) videoUrl = bestFormat.url;
     }
@@ -63,7 +69,6 @@ module.exports = async ({ sock, msg, from, args }) => {
         throw new Error('Tidak bisa menemukan URL video yang valid dalam response.');
     }
 
-    // Download video buffer
     const videoResponse = await fetch(videoUrl);
     if (!videoResponse.ok) {
         throw new Error(`Gagal mendownload file video: HTTP ${videoResponse.status}`);
@@ -117,12 +122,3 @@ module.exports = async ({ sock, msg, from, args }) => {
     );
   }
 };
-
-/**
- * Helper untuk ambil YouTube ID dari URL
- */
-function getYoutubeId(url) {
-    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
-    const match = url.match(regex);
-    return match ? match[1] : null;
-}

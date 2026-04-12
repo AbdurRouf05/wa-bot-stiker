@@ -1,14 +1,18 @@
 // commands/sticker.js — Pembuatan Stiker & Konversi
-const fs = require("fs");
-const path = require("path");
-const { execFile } = require("child_process");
-const { addExifToWebpBuffer } = require("../utils/exif");
+import fs from "fs";
+import path from "path";
+import { execFile } from "child_process";
+import { fileURLToPath } from "url";
+import { addExifToWebpBuffer } from "../utils/exif.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Pastikan folder temp ada
 const TEMP_DIR = path.join(__dirname, "..", "temp");
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 
-module.exports = async (ctx) => {
+export default async (ctx) => {
   const { cmd } = ctx;
   if (cmd === "s") return handleStickerCreate(ctx);
   if (cmd === "toimg" || cmd === "img") return handleStickerToImage(ctx);

@@ -1,5 +1,7 @@
 // commands/qc.js
 // Quote Creator seperti WhatsApp bubble asli
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 
 // ==== coba load canvas (buat balon chat) ====
 let createCanvas, loadImage;
@@ -24,14 +26,12 @@ try {
   );
 }
 
-const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
-
 /**
  * .qc - Quote Creator seperti WhatsApp bubble asli
  * - .qc teks
  * - reply pesan lalu ketik .qc
  */
-module.exports = async ({ sock, msg, from, args }) => {
+export default async ({ sock, msg, from, args }) => {
   // Kalau canvas atau sharp tidak tersedia (Termux), jangan bikin bot crash
   if (!createCanvas || !loadImage || !sharp) {
     await sock.sendMessage(

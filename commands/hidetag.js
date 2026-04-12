@@ -1,5 +1,5 @@
 // commands/hidetag.js
-module.exports = async ({ sock, msg, from, args }) => {
+export default async ({ sock, msg, from, args }) => {
   const text = args.join(" ") || "Hidetag dari bot";
   const meta = await sock.groupMetadata(from).catch(() => null);
   if (!meta) {

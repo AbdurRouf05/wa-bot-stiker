@@ -1,5 +1,5 @@
 // commands/menu.js
-module.exports = async ({ sock, from, msg }) => {
+export default async ({ sock, from, msg }) => {
   const text = `
 🎬 *BOT DOWNLOADER*
 
