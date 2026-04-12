@@ -35,7 +35,7 @@ module.exports = async ({ sock, msg, from, args }) => {
     const options = {
       method: 'GET',
       headers: {
-        'x-rapidapi-key': 'c60a569d9bmshc8784a5743699a0p10423cjsn8b083ea602a2',
+        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
         'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
       }
     };
