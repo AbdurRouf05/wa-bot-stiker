@@ -1,5 +1,7 @@
 import { webcrypto } from "node:crypto";
-if (!globalThis.crypto) globalThis.crypto = webcrypto;
+if (!globalThis.crypto || !globalThis.crypto.subtle) {
+  globalThis.crypto = webcrypto;
+}
 
 import "dotenv/config";
 import makeWASocket, {
