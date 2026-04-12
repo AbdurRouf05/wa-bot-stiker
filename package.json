@@ -8,7 +8,7 @@
   },
   "author": "Arackerman05",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc.8",
     "axios": "^1.13.2",
