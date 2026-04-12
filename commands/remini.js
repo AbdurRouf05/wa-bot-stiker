@@ -37,7 +37,7 @@ module.exports = async ({ sock, msg, from, args, getMediaBuffer }) => {
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
-        'x-rapidapi-key': 'c60a569d9bmshc8784a5743699a0p10423cjsn8b083ea602a2',
+        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
         'x-rapidapi-host': 'photo-enhance-api.p.rapidapi.com',
         'Content-Type': 'application/json'
       },

@@ -1,6 +1,6 @@
 // utils/exif.js — Tambahkan metadata EXIF ke stiker WebP (Simple & Safe)
-const STICKER_PACK = "Abd Bot";
-const STICKER_AUTHOR = "wa.me/6283854136611";
+const STICKER_PACK = process.env.STICKER_PACK || "Abd Bot";
+const STICKER_AUTHOR = process.env.STICKER_AUTHOR || "Bot";
 
 /**
  * Tambahkan EXIF metadata ke buffer WebP.
