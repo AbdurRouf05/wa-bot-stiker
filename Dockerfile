@@ -6,6 +6,9 @@ RUN apt-get update && apt-get install -y \
     imagemagick \
     libwebp-dev \
     git \
+    python3 \
+    python3-pip \
+    python3-opencv \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pnpm
