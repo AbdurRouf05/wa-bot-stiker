@@ -128,7 +128,13 @@ async function start() {
 
     if (connection === "close") {
       const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode;
-      if (statusCode === DisconnectReason.loggedOut) {
+      const shouldRestart = statusCode !== DisconnectReason.loggedOut;
+      const isBadSession = lastDisconnect?.error?.message?.includes("Bad MAC");
+
+      console.log("Connection closed. status:", statusCode, "isBadSession:", isBadSession);
+
+      if (statusCode === DisconnectReason.loggedOut || isBadSession) {
+        console.log("⚠️ Session rusak atau ter-logout. Menghapus folder auth...");
         fs.rmSync(authDir, { recursive: true, force: true });
         setTimeout(() => start(), 3000);
       } else {
