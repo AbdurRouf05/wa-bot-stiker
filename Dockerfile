@@ -8,8 +8,16 @@ RUN apt-get update && apt-get install -y \
     git \
     python3 \
     python3-pip \
-    python3-opencv \
+    libcairo2-dev \
+    libjpeg-dev \
+    libpango1.0-dev \
+    libgif-dev \
+    build-essential \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
+
+# Install python dependencies
+RUN pip3 install --no-cache-dir opencv-contrib-python-headless numpy --break-system-packages
 
 # Install pnpm
 RUN npm install -g pnpm
