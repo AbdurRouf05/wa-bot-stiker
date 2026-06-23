@@ -126,18 +126,9 @@ async function start() {
     browser: phoneNumber ? ["Chrome", "Chrome", "130.0.0"] : ["Abdbot", "Chrome", "1.0.0"],
   });
 
-  // Pairing Code Logic
-  if (phoneNumber && !sock.authState.creds.registered) {
-    setTimeout(async () => {
-      try {
-        const code = await sock.requestPairingCode(phoneNumber);
-        console.log(`\n🔑 PAIRING CODE: ${code}\n`);
-      } catch (err) {
-        console.error("❌ Gagal request pairing code:", err.message);
-      }
-    }, 3000);
-  }
+  // Pairing Code request dipindah ke dalam event qr agar tidak mengganggu sesi yang sudah aktif
 
+  let pairingCodeRequested = false;
   sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect, qr } = update;
     
@@ -145,6 +136,19 @@ async function start() {
     if (qr) {
       console.log("\n📷 SCAN QR CODE DI BAWAH INI JIKA PAIRING CODE GAGAL:\n");
       qrcode.generate(qr, { small: true });
+
+      // Hanya request Pairing Code JIKA WhatsApp benar-benar meminta otentikasi (mengeluarkan QR)
+      if (phoneNumber && !pairingCodeRequested) {
+        pairingCodeRequested = true;
+        setTimeout(async () => {
+          try {
+            const code = await sock.requestPairingCode(phoneNumber);
+            console.log(`\n🔑 PAIRING CODE: ${code}\n`);
+          } catch (err) {
+            console.error("❌ Gagal request pairing code:", err.message);
+          }
+        }, 2000);
+      }
     }
 
     if (connection === "close") {
@@ -168,10 +172,11 @@ async function start() {
         // Beri waktu sejenak agar penghapusan selesai sebelum exit
         setTimeout(() => process.exit(1), 1000);
       } else {
-        console.log("Koneksi terputus, mencoba menyambung kembali...");
-        // Gunakan pemanggilan ulang fungsi start() agar tugas penyimpanan kredensial
-        // (saveCreds) yang sedang berjalan di background tidak terpotong oleh process.exit
-        setTimeout(() => start(), 3000);
+        console.log("Koneksi terputus, mencoba menyambung kembali (process.exit)...");
+        // Keluar dari proses Node agar tidak terjadi tumpukan instance bot 
+        // yang menyebabkan file sesi (creds.json) saling bertabrakan/corrupt.
+        // Beri jeda 3 detik agar Baileys sempat menyimpan sesi ke disk sebelum dimatikan.
+        setTimeout(() => process.exit(1), 3000);
       }
     } else if (connection === "open") {
       console.log("✅ Bot sudah terhubung ke WhatsApp!");
