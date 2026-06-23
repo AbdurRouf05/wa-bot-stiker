@@ -58,7 +58,7 @@ export default async ({ sock, msg, from, args }) => {
   ctx.fillRect(0, 0, size, size);
 
   ctx.fillStyle = "#000000";
-  ctx.font = "bold 64px Sans";
+  ctx.font = 'bold 64px "Segoe UI Emoji", "Noto Color Emoji", Sans';
   ctx.textAlign = "left";
 
   const words = text.split(/\s+/);
