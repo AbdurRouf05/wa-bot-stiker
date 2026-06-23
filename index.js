@@ -16,8 +16,17 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import { fileURLToPath, pathToFileURL } from "url";
-import { tmp, getMediaBuffer } from "./utils.js";
+import { tmp, getMediaBuffer, getTextFromMessage } from "./utils.js";
 import db from "./utils/db.js";
+import { handleGameInput } from "./utils/gameHandler.js";
+
+// ====== Inisialisasi Game State ======
+if (!global.games) {
+  global.games = {
+    tebakkata: {},
+    ttt: {}
+  };
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -233,6 +242,10 @@ async function start() {
     // Database access
     const groupData = isGroup ? db.getGroup(from) : null;
     const userData = db.getUser(msg.key.participant || from);
+
+    // Intercept game input (jawaban) sebelum mengecek prefix "."
+    const isGameHandled = await handleGameInput({ sock, msg, from, text, isGroup });
+    if (isGameHandled) return;
 
     if (text.toLowerCase() === "ping") {
       await sock.sendMessage(from, { text: "pong 🏓" }, { quoted: msg });
