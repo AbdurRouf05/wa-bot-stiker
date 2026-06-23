@@ -140,7 +140,12 @@ async function start() {
 
   sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect, qr } = update;
-    if (qr && !phoneNumber) qrcode.generate(qr, { small: true });
+    
+    // Selalu tampilkan QR code di terminal sebagai alternatif jika Pairing Code gagal
+    if (qr) {
+      console.log("\n📷 SCAN QR CODE DI BAWAH INI JIKA PAIRING CODE GAGAL:\n");
+      qrcode.generate(qr, { small: true });
+    }
 
     if (connection === "close") {
       const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode;
