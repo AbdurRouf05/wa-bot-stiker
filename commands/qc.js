@@ -1,21 +1,20 @@
 // commands/qc.js
-// Quote Creator — WhatsApp-style chat bubble sticker
+// Quote Creator — WhatsApp-style chat bubble sticker (authentic design)
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 
-// ==== coba load @napi-rs/canvas (buat balon chat) ====
+// ==== coba load @napi-rs/canvas ====
 let createCanvas, GlobalFonts;
 try {
   ({ createCanvas, GlobalFonts } = require("@napi-rs/canvas"));
 } catch (e) {
   createCanvas = null;
-  GlobalFonts = null;
   console.log(
     "[qc] module '@napi-rs/canvas' tidak tersedia, fitur .qc akan dimatikan di environment ini."
   );
 }
 
-// ==== coba load sharp (convert PNG -> WebP) ====
+// ==== coba load sharp ====
 let sharp;
 try {
   sharp = require("sharp");
@@ -26,16 +25,10 @@ try {
   );
 }
 
-// Palet warna untuk nama kontak (mirip WA)
+// Palet warna nama kontak (sama seperti WhatsApp di grup)
 const NAME_COLORS = [
-  "#e15e5e", // merah
-  "#d4a03c", // emas
-  "#5bbb6f", // hijau
-  "#4faadb", // biru muda
-  "#7c6ed4", // ungu
-  "#d4556e", // pink
-  "#d48c3c", // oranye
-  "#4dc0b5", // teal
+  "#e06055", "#d4813e", "#c1a835", "#6fba57",
+  "#45bfa5", "#5bb5d4", "#6f8cd4", "#a87bd4",
 ];
 
 function getNameColor(name) {
@@ -46,23 +39,14 @@ function getNameColor(name) {
   return NAME_COLORS[Math.abs(hash) % NAME_COLORS.length];
 }
 
-/**
- * .qc - Quote Creator — Buat stiker gelembung chat cantik
- * - .qc teks
- * - reply pesan lalu ketik .qc
- */
+// Font family dengan emoji support
+const FONT = '"Segoe UI Emoji", "Noto Color Emoji", "Segoe UI", Arial, sans-serif';
+
 export default async ({ sock, msg, from, args }) => {
-  // Kalau canvas atau sharp tidak tersedia, jangan crash
   if (!createCanvas || !sharp) {
-    await sock.sendMessage(
-      from,
-      {
-        text:
-          "Fitur *.qc* belum tersedia di environment ini.\n" +
-          "Diperlukan module *@napi-rs/canvas* dan *sharp*.",
-      },
-      { quoted: msg }
-    );
+    await sock.sendMessage(from, {
+      text: "Fitur *.qc* belum tersedia di environment ini.\nDiperlukan *@napi-rs/canvas* dan *sharp*.",
+    }, { quoted: msg });
     return;
   }
 
@@ -81,19 +65,14 @@ export default async ({ sock, msg, from, args }) => {
   if (quotedMsg) {
     const participant = quotedMsg.participant || quotedMsg.remoteJid || "";
 
-    // Coba ambil nama kontak dari contacts store di Baileys
-    let contactName = null;
-    try {
-      // Baileys menyimpan contacts di sock.contacts (jika sudah di-bind)
-      const contact = sock.contacts?.[participant];
-      contactName = contact?.name || contact?.notify || contact?.pushName || null;
-    } catch {}
-
-    displayName = contactName
+    // Ambil nama dari contacts store (disimpan oleh index.js)
+    const contact = sock.contacts?.[participant];
+    displayName = contact?.notify || contact?.name || contact?.pushName
       || formatPhoneNumber(participant)
       || "User";
 
-    const qMsg = quotedMsg.quotedMessage || quotedMsg.message || {};
+    // Ambil teks dari pesan yang di-reply
+    const qMsg = quotedMsg.quotedMessage || {};
     text =
       qMsg.conversation ||
       qMsg.extendedTextMessage?.text ||
@@ -102,161 +81,136 @@ export default async ({ sock, msg, from, args }) => {
       text ||
       "";
   } else {
-    // kalau tidak reply, pakai nama pengirim sendiri
     const sender = msg.key?.participant || msg.key?.remoteJid || "";
     displayName = msg.pushName || formatPhoneNumber(sender) || "User";
   }
 
   if (!text.trim()) {
-    await sock.sendMessage(
-      from,
-      {
-        text:
-          "Contoh:\n" +
-          "• *.qc Halo semuanya*\n" +
-          "• Reply pesan lalu ketik *.qc*",
-      },
-      { quoted: msg }
-    );
+    await sock.sendMessage(from, {
+      text: "Contoh:\n• *.qc Halo semuanya*\n• Reply pesan lalu ketik *.qc*",
+    }, { quoted: msg });
     return;
   }
 
-  // ===== DESAIN BUBBLE CHAT ala WhatsApp =====
-  const PADDING = 28;
-  const BUBBLE_PAD_X = 24;
-  const BUBBLE_PAD_Y = 16;
-  const NAME_FONT_SIZE = 26;
-  const TEXT_FONT_SIZE = 28;
-  const LINE_HEIGHT = TEXT_FONT_SIZE * 1.4;
-  const MAX_TEXT_WIDTH = 560;
-  const TAIL_SIZE = 16;
+  // ============================================================
+  //  RENDER BUBBLE CHAT ALA WHATSAPP
+  // ============================================================
 
-  // Measure text 
-  const measureCanvas = createCanvas(1, 1);
-  const measureCtx = measureCanvas.getContext("2d");
+  const PAD_H = 24;       // padding horizontal dalam bubble
+  const PAD_V = 14;       // padding vertikal dalam bubble
+  const NAME_SIZE = 24;
+  const TEXT_SIZE = 28;
+  const LINE_H = Math.round(TEXT_SIZE * 1.45);
+  const MAX_W = 520;      // lebar teks maksimal
+  const RADIUS = 18;      // radius sudut bubble
+  const CANVAS_PAD = 40;  // ruang kosong di sekitar bubble (transparan)
+  const TAIL_W = 12;      // lebar ekor bubble
 
-  // Ukur nama
-  measureCtx.font = `bold ${NAME_FONT_SIZE}px "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
-  const nameWidth = measureCtx.measureText(displayName).width;
+  // --- Ukur teks ---
+  const tmp = createCanvas(1, 1);
+  const tctx = tmp.getContext("2d");
 
-  // Word wrap teks
-  measureCtx.font = `${TEXT_FONT_SIZE}px "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
-  const textLines = wrapText(measureCtx, text, MAX_TEXT_WIDTH);
+  tctx.font = `bold ${NAME_SIZE}px ${FONT}`;
+  const nameW = tctx.measureText(displayName).width;
 
-  // Cari lebar teks terpanjang
-  let maxLineWidth = nameWidth;
-  for (const line of textLines) {
-    const w = measureCtx.measureText(line).width;
-    if (w > maxLineWidth) maxLineWidth = w;
+  tctx.font = `${TEXT_SIZE}px ${FONT}`;
+  const lines = wrapText(tctx, text, MAX_W);
+  let maxLineW = nameW;
+  for (const l of lines) {
+    const w = tctx.measureText(l).width;
+    if (w > maxLineW) maxLineW = w;
   }
 
-  // Hitung dimensi bubble
-  const bubbleWidth = Math.min(maxLineWidth + BUBBLE_PAD_X * 2, MAX_TEXT_WIDTH + BUBBLE_PAD_X * 2);
-  const bubbleHeight = NAME_FONT_SIZE + 10 + textLines.length * LINE_HEIGHT + BUBBLE_PAD_Y * 2;
-  const canvasWidth = PADDING * 2 + bubbleWidth + TAIL_SIZE;
-  const canvasHeight = PADDING * 2 + bubbleHeight + TAIL_SIZE;
+  // --- Hitung dimensi ---
+  const bubbleW = Math.min(maxLineW, MAX_W) + PAD_H * 2;
+  const contentH = NAME_SIZE + 8 + lines.length * LINE_H;
+  const bubbleH = contentH + PAD_V * 2;
 
-  // ===== GAMBAR BUBBLE =====
-  const canvas = createCanvas(canvasWidth, canvasHeight);
+  const cW = CANVAS_PAD * 2 + TAIL_W + bubbleW;
+  const cH = CANVAS_PAD * 2 + bubbleH;
+
+  // --- Canvas ---
+  const canvas = createCanvas(cW, cH);
   const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+  ctx.clearRect(0, 0, cW, cH);
 
-  const bubbleX = PADDING + TAIL_SIZE;
-  const bubbleY = PADDING;
-  const radius = 16;
-  const nameColor = getNameColor(displayName);
+  const bx = CANVAS_PAD + TAIL_W; // bubble x (setelah ekor)
+  const by = CANVAS_PAD;           // bubble y
 
-  // Shadow
-  ctx.shadowColor = "rgba(0, 0, 0, 0.15)";
-  ctx.shadowBlur = 12;
-  ctx.shadowOffsetX = 2;
-  ctx.shadowOffsetY = 4;
-
-  // Bubble background
-  ctx.fillStyle = "#ffffff";
-  roundedRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, radius);
-  ctx.fill();
-
-  // Reset shadow
-  ctx.shadowColor = "transparent";
-  ctx.shadowBlur = 0;
+  // --- Shadow ---
+  ctx.shadowColor = "rgba(0,0,0,0.18)";
+  ctx.shadowBlur = 10;
   ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 0;
+  ctx.shadowOffsetY = 3;
 
-  // Tail (segitiga kecil di kiri atas)
+  // --- Bubble body (rounded rect) ---
   ctx.fillStyle = "#ffffff";
   ctx.beginPath();
-  ctx.moveTo(bubbleX, bubbleY + 12);
-  ctx.lineTo(bubbleX - TAIL_SIZE, bubbleY + 6);
-  ctx.lineTo(bubbleX, bubbleY + 28);
+  ctx.roundRect(bx, by, bubbleW, bubbleH, RADIUS);
+  ctx.fill();
+
+  // --- Ekor kiri atas (seperti WA incoming) ---
+  ctx.shadowColor = "transparent";
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.moveTo(bx, by + 4);
+  ctx.lineTo(bx - TAIL_W, by);
+  ctx.lineTo(bx, by + 22);
   ctx.closePath();
   ctx.fill();
 
-  // Garis aksen warna di atas (seperti WhatsApp group)
+  // Timpa sudut kiri atas agar menyatu mulus dengan ekor
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(bx, by, RADIUS, 22);
+
+  // --- Garis hijau tipis di atas bubble (aksen WA group) ---
+  const nameColor = getNameColor(displayName);
   ctx.fillStyle = nameColor;
   ctx.beginPath();
-  ctx.roundRect(bubbleX, bubbleY, bubbleWidth, 4, [radius, radius, 0, 0]);
+  ctx.roundRect(bx, by, bubbleW, 4, [RADIUS, RADIUS, 0, 0]);
   ctx.fill();
 
-  // Nama pengirim
+  // --- Nama ---
   ctx.fillStyle = nameColor;
-  ctx.font = `bold ${NAME_FONT_SIZE}px "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
+  ctx.font = `bold ${NAME_SIZE}px ${FONT}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.fillText(displayName, bubbleX + BUBBLE_PAD_X, bubbleY + BUBBLE_PAD_Y + 4);
+  ctx.fillText(displayName, bx + PAD_H, by + PAD_V + 2);
 
-  // Isi pesan
-  ctx.fillStyle = "#1a1a1a";
-  ctx.font = `${TEXT_FONT_SIZE}px "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
-  let textY = bubbleY + BUBBLE_PAD_Y + NAME_FONT_SIZE + 14;
-  for (const line of textLines) {
-    ctx.fillText(line, bubbleX + BUBBLE_PAD_X, textY);
-    textY += LINE_HEIGHT;
+  // --- Teks pesan ---
+  ctx.fillStyle = "#111b21";
+  ctx.font = `${TEXT_SIZE}px ${FONT}`;
+  let ty = by + PAD_V + NAME_SIZE + 10;
+  for (const line of lines) {
+    ctx.fillText(line, bx + PAD_H, ty);
+    ty += LINE_H;
   }
 
-  // ===== RENDER =====
+  // --- Render ---
   const pngBuf = canvas.toBuffer("image/png");
   const webpBuf = await sharp(pngBuf).webp({ quality: 95 }).toBuffer();
-
   await sock.sendMessage(from, { sticker: webpBuf }, { quoted: msg });
 };
 
-// Format nomor telepon agar lebih readable (6281234567890 → +62 812-3456-7890)
+// Format nomor agar readable
 function formatPhoneNumber(jid) {
-  const num = jid.split("@")[0];
-  if (!num || num.length < 8) return num;
+  const num = (jid || "").split("@")[0];
+  if (!num || num.length < 8) return num || "User";
   return `+${num.slice(0, 2)} ${num.slice(2, 5)}-${num.slice(5, 9)}-${num.slice(9)}`;
 }
 
-// Helper: rounded rectangle
-function roundedRect(ctx, x, y, width, height, radius) {
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + width - radius, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-  ctx.lineTo(x + width, y + height - radius);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  ctx.lineTo(x + radius, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.closePath();
-}
-
-// Helper: wrap text ke beberapa baris
+// Word wrap
 function wrapText(ctx, text, maxWidth) {
   const words = text.split(/\s+/);
   const lines = [];
   let line = "";
-
   for (const word of words) {
-    const testLine = line ? line + " " + word : word;
-    const metrics = ctx.measureText(testLine);
-    if (metrics.width > maxWidth && line) {
+    const test = line ? line + " " + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
       lines.push(line);
       line = word;
     } else {
-      line = testLine;
+      line = test;
     }
   }
   if (line) lines.push(line);
