@@ -10,6 +10,7 @@ export default async ({ sock, from, msg }) => {
 
 🛠️ *MEDIA TOOLS*
 • .s - Buat sticker
+• .smeme - Sticker meme (text on image)
 • .toimg - Sticker ke gambar
 • .tomp4 - Sticker ke video
 • .qc - Quote sticker
@@ -19,8 +20,9 @@ export default async ({ sock, from, msg }) => {
 • .hidetag - Mention all
 • .delete - Delete pesan bot
 
-🎭 *FUN*
+🎭 *FUN & UTILITY*
 • .brat - Brat meme
+• .math - Kalkulator pintar
 
 ⚡ _Simple & Fast_
   `.trim();
