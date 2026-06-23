@@ -6,12 +6,12 @@ const require = createRequire(import.meta.url);
 // ==== coba load canvas (buat balon chat) ====
 let createCanvas, loadImage;
 try {
-  ({ createCanvas, loadImage } = require("canvas"));
+  ({ createCanvas, loadImage } = require("@napi-rs/canvas"));
 } catch (e) {
   createCanvas = null;
   loadImage = null;
   console.log(
-    "[qc] module 'canvas' tidak tersedia, fitur .qc akan dimatikan di environment ini."
+    "[qc] module '@napi-rs/canvas' tidak tersedia, fitur .qc akan dimatikan di environment ini."
   );
 }
 
