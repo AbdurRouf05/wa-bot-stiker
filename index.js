@@ -165,12 +165,13 @@ async function start() {
         fs.rmSync(authDir, { recursive: true, force: true });
         
         console.log("Memulai ulang bot (process exit)...");
-        process.exit(1);
+        // Beri waktu sejenak agar penghapusan selesai sebelum exit
+        setTimeout(() => process.exit(1), 1000);
       } else {
         console.log("Koneksi terputus, mencoba menyambung kembali...");
-        // Keluar dari proses agar direstart secara bersih oleh Docker/PM2 
-        // dan menghindari memory leak/ENOENT dari Baileys
-        process.exit(1);
+        // Gunakan pemanggilan ulang fungsi start() agar tugas penyimpanan kredensial
+        // (saveCreds) yang sedang berjalan di background tidak terpotong oleh process.exit
+        setTimeout(() => start(), 3000);
       }
     } else if (connection === "open") {
       console.log("✅ Bot sudah terhubung ke WhatsApp!");
