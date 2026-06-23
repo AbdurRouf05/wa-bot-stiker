@@ -1,5 +1,4 @@
 // commands/brat.js
-// Buat stiker teks gaya album cover "brat" Charli XCX
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 
@@ -54,77 +53,32 @@ export default async ({ sock, msg, from, args }) => {
   const canvas = createCanvas(size, size);
   const ctx = canvas.getContext("2d");
 
-  // ===== Background hijau lime khas Brat =====
-  ctx.fillStyle = "#8ACE00";
+  // background putih
+  ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, size, size);
 
-  // ===== Teks hitam semi-bold, sedikit blur =====
   ctx.fillStyle = "#000000";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
+  ctx.font = "bold 64px Sans";
+  ctx.textAlign = "left";
 
-  // Tentukan ukuran font yang pas berdasarkan panjang teks
-  let fontSize = 80;
-  if (text.length > 30) fontSize = 64;
-  if (text.length > 60) fontSize = 52;
-  if (text.length > 100) fontSize = 40;
-
-  ctx.font = `bold italic ${fontSize}px Arial, "Helvetica Neue", sans-serif`;
-
-  // Word wrap
   const words = text.split(/\s+/);
-  const lineHeight = fontSize * 1.2;
-  const maxWidth = size - 80;
-  const lines = [];
+  const lineHeight = 70;
+  let x = 40;
+  let y = 120;
   let line = "";
 
   for (const w of words) {
     const test = line ? line + " " + w : w;
     const width = ctx.measureText(test).width;
-    if (width > maxWidth && line) {
-      lines.push(line);
+    if (width > size - 80 && line) {
+      ctx.fillText(line, x, y);
+      y += lineHeight;
       line = w;
     } else {
       line = test;
     }
   }
-  if (line) lines.push(line);
-
-  // Hitung posisi Y agar teks di tengah vertikal
-  const totalHeight = lines.length * lineHeight;
-  let startY = (size - totalHeight) / 2 + lineHeight / 2;
-
-  // Efek blur: gambar teks beberapa kali dengan offset kecil dan opacity rendah
-  // untuk menciptakan efek blur khas Brat
-  const blurLayers = [
-    { offsetX: -2, offsetY: -1, alpha: 0.15 },
-    { offsetX: 2, offsetY: 1, alpha: 0.15 },
-    { offsetX: -1, offsetY: 2, alpha: 0.12 },
-    { offsetX: 1, offsetY: -2, alpha: 0.12 },
-    { offsetX: -3, offsetY: 0, alpha: 0.08 },
-    { offsetX: 3, offsetY: 0, alpha: 0.08 },
-    { offsetX: 0, offsetY: -3, alpha: 0.08 },
-    { offsetX: 0, offsetY: 3, alpha: 0.08 },
-  ];
-
-  for (const layer of blurLayers) {
-    ctx.globalAlpha = layer.alpha;
-    let y = startY;
-    for (const l of lines) {
-      ctx.fillText(l, size / 2 + layer.offsetX, y + layer.offsetY);
-      y += lineHeight;
-    }
-  }
-
-  // Gambar teks utama
-  ctx.globalAlpha = 0.85;
-  let y = startY;
-  for (const l of lines) {
-    ctx.fillText(l, size / 2, y);
-    y += lineHeight;
-  }
-
-  ctx.globalAlpha = 1.0;
+  if (line) ctx.fillText(line, x, y);
 
   const pngBuf = canvas.toBuffer("image/png");
   const webpBuf = await sharp(pngBuf).webp({ quality: 95 }).toBuffer();
