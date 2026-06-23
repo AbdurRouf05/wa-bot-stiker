@@ -16,7 +16,7 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import { fileURLToPath, pathToFileURL } from "url";
-import { tmp, getMediaBuffer, getTextFromMessage } from "./utils.js";
+import { tmp, getMediaBuffer } from "./utils.js";
 import db from "./utils/db.js";
 import { handleGameInput } from "./utils/gameHandler.js";
 
