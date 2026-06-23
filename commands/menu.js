@@ -20,6 +20,10 @@ export default async ({ sock, from, msg }) => {
 • .hidetag - Mention all
 • .delete - Delete pesan bot
 
+🎮 *GAMES*
+• .tebakkata - Main tebak kata
+• .ttt [@tag] - Main Tic-Tac-Toe
+
 🎭 *FUN & UTILITY*
 • .brat - Brat meme
 • .math - Kalkulator pintar
