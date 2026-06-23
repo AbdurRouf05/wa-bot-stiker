@@ -81,13 +81,29 @@ async function start() {
 
   // ====== Session String Handler ======
   const sessionId = process.env.SESSION_ID;
+  const badSessionFile = path.join(__dirname, ".bad_session");
+
   if (sessionId && !fs.existsSync(path.join(authDir, "creds.json"))) {
-    try {
-      console.log("💾 Mendeteksi SESSION_ID, memulihkan sesi...");
-      const creds = Buffer.from(sessionId, "base64").toString("utf-8");
-      fs.writeFileSync(path.join(authDir, "creds.json"), creds);
-    } catch (e) {
-      console.error("❌ Gagal decode SESSION_ID:", e.message);
+    let isBad = false;
+    if (fs.existsSync(badSessionFile)) {
+      const badSessionId = fs.readFileSync(badSessionFile, "utf-8");
+      if (badSessionId === sessionId) {
+        isBad = true;
+        console.log("⚠️ SESSION_ID saat ini rusak/kedaluwarsa. Mengabaikan pemulihan sesi.");
+      } else {
+        // SESSION_ID sudah diganti yang baru, hapus file bad_session
+        fs.unlinkSync(badSessionFile);
+      }
+    }
+
+    if (!isBad) {
+      try {
+        console.log("💾 Mendeteksi SESSION_ID, memulihkan sesi...");
+        const creds = Buffer.from(sessionId, "base64").toString("utf-8");
+        fs.writeFileSync(path.join(authDir, "creds.json"), creds);
+      } catch (e) {
+        console.error("❌ Gagal decode SESSION_ID:", e.message);
+      }
     }
   }
 
@@ -135,10 +151,21 @@ async function start() {
 
       if (statusCode === DisconnectReason.loggedOut || isBadSession) {
         console.log("⚠️ Session rusak atau ter-logout. Menghapus folder auth...");
+        
+        // Simpan sesi yang rusak agar tidak dipulihkan lagi setelah restart
+        if (process.env.SESSION_ID) {
+          fs.writeFileSync(path.join(__dirname, ".bad_session"), process.env.SESSION_ID);
+        }
+        
         fs.rmSync(authDir, { recursive: true, force: true });
-        setTimeout(() => start(), 3000);
+        
+        console.log("Memulai ulang bot (process exit)...");
+        process.exit(1);
       } else {
-        setTimeout(() => start(), 5000);
+        console.log("Koneksi terputus, mencoba menyambung kembali...");
+        // Keluar dari proses agar direstart secara bersih oleh Docker/PM2 
+        // dan menghindari memory leak/ENOENT dari Baileys
+        process.exit(1);
       }
     } else if (connection === "open") {
       console.log("✅ Bot sudah terhubung ke WhatsApp!");
