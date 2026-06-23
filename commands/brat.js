@@ -5,11 +5,11 @@ const require = createRequire(import.meta.url);
 // ==== coba load canvas (buat gambar) ====
 let createCanvas;
 try {
-  ({ createCanvas } = require("canvas"));
+  ({ createCanvas } = require("@napi-rs/canvas"));
 } catch (e) {
   createCanvas = null;
   console.log(
-    "[brat] module 'canvas' tidak tersedia, fitur .brat akan dimatikan di environment ini."
+    "[brat] module '@napi-rs/canvas' tidak tersedia, fitur .brat akan dimatikan di environment ini."
   );
 }
 
