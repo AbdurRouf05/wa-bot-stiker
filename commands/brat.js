@@ -1,8 +1,9 @@
 // commands/brat.js
-import { createRequire } from 'module';
+// Buat stiker teks gaya album cover "brat" Charli XCX
+import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 
-// ==== coba load canvas (buat gambar) ====
+// ==== coba load @napi-rs/canvas (buat gambar) ====
 let createCanvas;
 try {
   ({ createCanvas } = require("@napi-rs/canvas"));
@@ -25,14 +26,14 @@ try {
 }
 
 export default async ({ sock, msg, from, args }) => {
-  // Kalau salah satu tidak ada (Termux), jangan bikin bot crash
+  // Kalau salah satu tidak ada, jangan crash
   if (!createCanvas || !sharp) {
     await sock.sendMessage(
       from,
       {
         text:
           "Fitur *.brat* belum tersedia di environment ini.\n" +
-          "Diperlukan module *canvas* dan *sharp* yang tidak bisa dipasang di Termux.",
+          "Diperlukan module *@napi-rs/canvas* dan *sharp*.",
       },
       { quoted: msg }
     );
@@ -53,32 +54,77 @@ export default async ({ sock, msg, from, args }) => {
   const canvas = createCanvas(size, size);
   const ctx = canvas.getContext("2d");
 
-  // background putih
-  ctx.fillStyle = "#ffffff";
+  // ===== Background hijau lime khas Brat =====
+  ctx.fillStyle = "#8ACE00";
   ctx.fillRect(0, 0, size, size);
 
+  // ===== Teks hitam semi-bold, sedikit blur =====
   ctx.fillStyle = "#000000";
-  ctx.font = "bold 64px Sans";
-  ctx.textAlign = "left";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
 
+  // Tentukan ukuran font yang pas berdasarkan panjang teks
+  let fontSize = 80;
+  if (text.length > 30) fontSize = 64;
+  if (text.length > 60) fontSize = 52;
+  if (text.length > 100) fontSize = 40;
+
+  ctx.font = `bold italic ${fontSize}px Arial, "Helvetica Neue", sans-serif`;
+
+  // Word wrap
   const words = text.split(/\s+/);
-  const lineHeight = 70;
-  let x = 40;
-  let y = 120;
+  const lineHeight = fontSize * 1.2;
+  const maxWidth = size - 80;
+  const lines = [];
   let line = "";
 
   for (const w of words) {
     const test = line ? line + " " + w : w;
     const width = ctx.measureText(test).width;
-    if (width > size - 80 && line) {
-      ctx.fillText(line, x, y);
-      y += lineHeight;
+    if (width > maxWidth && line) {
+      lines.push(line);
       line = w;
     } else {
       line = test;
     }
   }
-  if (line) ctx.fillText(line, x, y);
+  if (line) lines.push(line);
+
+  // Hitung posisi Y agar teks di tengah vertikal
+  const totalHeight = lines.length * lineHeight;
+  let startY = (size - totalHeight) / 2 + lineHeight / 2;
+
+  // Efek blur: gambar teks beberapa kali dengan offset kecil dan opacity rendah
+  // untuk menciptakan efek blur khas Brat
+  const blurLayers = [
+    { offsetX: -2, offsetY: -1, alpha: 0.15 },
+    { offsetX: 2, offsetY: 1, alpha: 0.15 },
+    { offsetX: -1, offsetY: 2, alpha: 0.12 },
+    { offsetX: 1, offsetY: -2, alpha: 0.12 },
+    { offsetX: -3, offsetY: 0, alpha: 0.08 },
+    { offsetX: 3, offsetY: 0, alpha: 0.08 },
+    { offsetX: 0, offsetY: -3, alpha: 0.08 },
+    { offsetX: 0, offsetY: 3, alpha: 0.08 },
+  ];
+
+  for (const layer of blurLayers) {
+    ctx.globalAlpha = layer.alpha;
+    let y = startY;
+    for (const l of lines) {
+      ctx.fillText(l, size / 2 + layer.offsetX, y + layer.offsetY);
+      y += lineHeight;
+    }
+  }
+
+  // Gambar teks utama
+  ctx.globalAlpha = 0.85;
+  let y = startY;
+  for (const l of lines) {
+    ctx.fillText(l, size / 2, y);
+    y += lineHeight;
+  }
+
+  ctx.globalAlpha = 1.0;
 
   const pngBuf = canvas.toBuffer("image/png");
   const webpBuf = await sharp(pngBuf).webp({ quality: 95 }).toBuffer();

@@ -185,6 +185,41 @@ async function start() {
 
   sock.ev.on("creds.update", saveCreds);
 
+  // ====== Simpan kontak agar QC bisa menampilkan nama, bukan nomor ======
+  if (!sock.contacts) sock.contacts = {};
+  
+  sock.ev.on("contacts.upsert", (contacts) => {
+    for (const contact of contacts) {
+      sock.contacts[contact.id] = {
+        ...(sock.contacts[contact.id] || {}),
+        ...contact,
+      };
+    }
+  });
+
+  sock.ev.on("contacts.update", (updates) => {
+    for (const update of updates) {
+      if (sock.contacts[update.id]) {
+        Object.assign(sock.contacts[update.id], update);
+      } else {
+        sock.contacts[update.id] = update;
+      }
+    }
+  });
+
+  // Juga simpan pushName dari pesan yang masuk
+  sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
+    for (const m of msgs) {
+      if (m.pushName) {
+        const jid = m.key?.participant || m.key?.remoteJid;
+        if (jid && jid !== "status@broadcast") {
+          if (!sock.contacts[jid]) sock.contacts[jid] = {};
+          sock.contacts[jid].notify = m.pushName;
+        }
+      }
+    }
+  });
+
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
     const msg = messages[0];

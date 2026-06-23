@@ -3,7 +3,11 @@ import fs from "fs";
 import path from "path";
 import { execFile } from "child_process";
 import { fileURLToPath } from "url";
+import { createRequire } from "module";
 import { addExifToWebpBuffer } from "../utils/exif.js";
+
+const require = createRequire(import.meta.url);
+const sharp = require("sharp");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,50 +46,50 @@ async function handleStickerCreate({ sock, msg, from, getMediaBuffer }) {
     return;
   }
 
-  const fileId = Date.now();
-  const isImage = media.type === "imageMessage";
-  const ext = isImage ? "png" : "mp4";
-  const inputPath = path.join(TEMP_DIR, `${fileId}_in.${ext}`);
-  const webpPath = path.join(TEMP_DIR, `${fileId}_out.webp`);
-
-  fs.writeFileSync(inputPath, media.buffer);
-
   try {
+    const isImage = media.type === "imageMessage";
+
     if (isImage) {
-      // Gambar → WebP pakai ImageMagick (lebih stabil di Termux)
-      await runCmd("convert", [
-        inputPath,
-        "-resize", "512x512",
-        "-background", "none",
-        "-gravity", "center",
-        "-extent", "512x512",
-        "-quality", "80",
-        webpPath
-      ]);
+      // Gambar → WebP pakai sharp (cross-platform, tanpa perlu ImageMagick)
+      const webpBuf = await sharp(media.buffer)
+        .resize(512, 512, {
+          fit: "contain",
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        })
+        .webp({ quality: 80 })
+        .toBuffer();
+
+      const stickerBuffer = addExifToWebpBuffer(webpBuf);
+      await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: msg });
     } else {
       // Video → Animated WebP pakai FFmpeg
+      const fileId = Date.now();
+      const inputPath = path.join(TEMP_DIR, `${fileId}_in.mp4`);
+      const webpPath = path.join(TEMP_DIR, `${fileId}_out.webp`);
+
+      fs.writeFileSync(inputPath, media.buffer);
+
       await runCmd("ffmpeg", [
         "-y", "-i", inputPath,
         "-t", "7",
-        "-vf", "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:white,fps=15",
+        "-vf", "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000,fps=15",
         "-c:v", "libwebp",
         "-loop", "0",
         "-an",
-        webpPath
+        webpPath,
       ]);
+
+      const rawBuffer = fs.readFileSync(webpPath);
+      const stickerBuffer = addExifToWebpBuffer(rawBuffer);
+      await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: msg });
+
+      // Cleanup
+      try { fs.unlinkSync(inputPath); } catch {}
+      try { fs.unlinkSync(webpPath); } catch {}
     }
-
-    // Baca file, tambahkan EXIF metadata, kirim
-    const rawBuffer = fs.readFileSync(webpPath);
-    const stickerBuffer = addExifToWebpBuffer(rawBuffer);
-    await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: msg });
-
   } catch (err) {
     console.error("❌ Sticker error:", err.message);
     await sock.sendMessage(from, { text: "❌ Gagal membuat stiker." }, { quoted: msg });
-  } finally {
-    try { fs.unlinkSync(inputPath); } catch {}
-    try { fs.unlinkSync(webpPath); } catch {}
   }
 }
 
@@ -122,24 +126,17 @@ async function handleStickerToImage({ sock, msg, from, downloadContentFromMessag
     return;
   }
 
-  const fileId = Date.now();
-  const webpPath = path.join(TEMP_DIR, `${fileId}.webp`);
-  const jpgPath = path.join(TEMP_DIR, `${fileId}.jpg`);
-
   try {
-    fs.writeFileSync(webpPath, buffer);
+    // Konversi pakai sharp (cross-platform, tanpa ImageMagick)
+    const jpgBuffer = await sharp(buffer, { animated: false })
+      .resize(512, 512, { fit: "contain", background: { r: 255, g: 255, b: 255 } })
+      .jpeg({ quality: 90 })
+      .toBuffer();
 
-    // ImageMagick: ambil frame pertama [0] dan convert ke JPG
-    await runCmd("convert", [webpPath + "[0]", "-resize", "512x512", jpgPath]);
-
-    const jpgBuffer = fs.readFileSync(jpgPath);
     await sock.sendMessage(from, { image: jpgBuffer, caption: "✅ Stiker → Gambar\n🤖 *Abd Bot*" }, { quoted: msg });
   } catch (err) {
     console.error("❌ toimg error:", err.message);
     await sock.sendMessage(from, { text: "❌ Gagal konversi stiker ke gambar." }, { quoted: msg });
-  } finally {
-    try { fs.unlinkSync(webpPath); } catch {}
-    try { fs.unlinkSync(jpgPath); } catch {}
   }
 }
 
@@ -153,18 +150,14 @@ async function handleStickerToMP4({ sock, msg, from, downloadContentFromMessage 
 
   const fileId = Date.now();
   const webpPath = path.join(TEMP_DIR, `${fileId}.webp`);
-  const gifPath = path.join(TEMP_DIR, `${fileId}.gif`);
   const mp4Path = path.join(TEMP_DIR, `${fileId}.mp4`);
 
   try {
     fs.writeFileSync(webpPath, buffer);
 
-    // STEP 1: WebP → GIF pakai ImageMagick (FFmpeg tidak bisa decode animated WebP di Termux)
-    await runCmd("convert", [webpPath, gifPath]);
-
-    // STEP 2: GIF → MP4 pakai FFmpeg
+    // Langsung WebP → MP4 pakai FFmpeg (versi modern sudah support animated webp)
     await runCmd("ffmpeg", [
-      "-y", "-i", gifPath,
+      "-y", "-i", webpPath,
       "-pix_fmt", "yuv420p",
       "-c:v", "libx264",
       "-movflags", "faststart",
@@ -172,7 +165,7 @@ async function handleStickerToMP4({ sock, msg, from, downloadContentFromMessage 
       "-r", "20",
       "-t", "10",
       "-an",
-      mp4Path
+      mp4Path,
     ]);
 
     const mp4Buffer = fs.readFileSync(mp4Path);
@@ -182,7 +175,6 @@ async function handleStickerToMP4({ sock, msg, from, downloadContentFromMessage 
     await sock.sendMessage(from, { text: "❌ Gagal konversi stiker ke video. Pastikan stiker ini animasi." }, { quoted: msg });
   } finally {
     try { fs.unlinkSync(webpPath); } catch {}
-    try { fs.unlinkSync(gifPath); } catch {}
     try { fs.unlinkSync(mp4Path); } catch {}
   }
 }
