@@ -1,4 +1,5 @@
 // utils/gameHandler.js
+import db from "./db.js";
 
 export async function handleGameInput({ sock, msg, from, text, isGroup }) {
   if (!text) return false;
@@ -15,6 +16,9 @@ export async function handleGameInput({ sock, msg, from, text, isGroup }) {
     if (text.toLowerCase() === game.jawaban.toLowerCase()) {
       clearTimeout(game.timer);
       const reward = 500; // Contoh reward
+      
+      const userData = db.getUser(sender);
+      db.updateUser(sender, { xp: (userData.xp || 0) + reward });
       
       await sock.sendMessage(
         from,
@@ -62,10 +66,15 @@ export async function handleGameInput({ sock, msg, from, text, isGroup }) {
       // Cek kemenangan
       if (checkWin(game.board, game.turn)) {
         clearTimeout(game.timer);
+        
+        const reward = 1000;
+        const userData = db.getUser(sender);
+        db.updateUser(sender, { xp: (userData.xp || 0) + reward });
+        
         await sock.sendMessage(
           from,
           { 
-            text: `🎉 *TIC-TAC-TOE SELESAI* 🎉\n\nPemenang: @${sender.split("@")[0]}\n\n${renderBoard(game.board)}`,
+            text: `🎉 *TIC-TAC-TOE SELESAI* 🎉\n\nPemenang: @${sender.split("@")[0]}\nHadiah: +${reward} XP\n\n${renderBoard(game.board)}`,
             mentions: [sender]
           }
         );
