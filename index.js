@@ -229,6 +229,44 @@ async function start() {
     }
   });
 
+  // ====== Fitur Welcome ======
+  sock.ev.on("group-participants.update", async (update) => {
+    const { id, participants, action } = update;
+    
+    if (action === "add") {
+      try {
+        const metadata = await sock.groupMetadata(id);
+        const groupName = metadata.subject;
+        const groupData = db.getGroup(id);
+        
+        // Asumsi fitur welcome selalu menyala kecuali explicitly dimatikan
+        if (groupData.welcome !== false) {
+          for (const num of participants) {
+            let ppUrl;
+            try { ppUrl = await sock.profilePictureUrl(num, "image"); } 
+            catch { ppUrl = "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png"; }
+            
+            const text = `👋 Halo @${num.split("@")[0]}!\nSelamat datang di grup *${groupName}*.\nSemoga betah ya! 🎉`;
+            await sock.sendMessage(id, { image: { url: ppUrl }, caption: text, mentions: [num] });
+          }
+        }
+      } catch (err) { console.error("Welcome Error:", err); }
+    } else if (action === "remove") {
+      try {
+        const metadata = await sock.groupMetadata(id);
+        const groupName = metadata.subject;
+        const groupData = db.getGroup(id);
+        
+        if (groupData.welcome !== false) {
+          for (const num of participants) {
+            const text = `👋 Bye @${num.split("@")[0]}!\nTelah keluar dari *${groupName}*.`;
+            await sock.sendMessage(id, { text, mentions: [num] });
+          }
+        }
+      } catch (err) {}
+    }
+  });
+
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
     const msg = messages[0];

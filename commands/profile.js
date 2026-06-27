@@ -27,8 +27,6 @@ export default async ({ sock, from, msg, db }) => {
   const xp = userData.xp || 0;
   const level = getLevel(xp);
   const role = getRole(level);
-  const limit = userData.limit || 0;
-  const isPremium = userData.premium ? "✅ Yes" : "❌ No";
   
   // Hitung XP yang dibutuhkan untuk level berikutnya
   const nextLevel = level + 1;
@@ -50,18 +48,22 @@ export default async ({ sock, from, msg, db }) => {
 ┃ 👤 *Name* : ${pushName}
 ┃ 📛 *Role* : ${role}
 ┃ 🌟 *Level* : ${level}
-┃ 🎖️ *Rank*  : ${isPremium} (Premium)
 ╰━━━━━━━━━━━━━━━━━━━━━━
 
 ╭━━━〔 *STATUS & STATS* 〕━━━
 ┃ 🪙 *EXP*   : ${xp.toLocaleString('id-ID')} / ${xpForNextLevel.toLocaleString('id-ID')}
 ┃ 📊 *Prog*  : [${progressBar}]
-┃ 🔋 *Limit* : ${limit} / 20
 ╰━━━━━━━━━━━━━━━━━━━━━━
 
 _Mainkan .tebakkata atau .ttt untuk menaikkan levelmu!_
   `.trim();
 
-  // Kirim profile text (jika bisa ambil PP, kita bisa kirim image, tapi text lebih cepat dan aman)
-  await sock.sendMessage(from, { text }, { quoted: msg });
+  try {
+    // Coba ambil foto profil WA pengguna
+    const ppUrl = await sock.profilePictureUrl(sender, 'image');
+    await sock.sendMessage(from, { image: { url: ppUrl }, caption: text }, { quoted: msg });
+  } catch (err) {
+    // Jika gagal (misal profil di-privat), kirim teks saja
+    await sock.sendMessage(from, { text }, { quoted: msg });
+  }
 };
