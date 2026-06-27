@@ -28,6 +28,7 @@ async function processing(buffer, method) {
           Connection: "Keep-Alive",
           "Accept-Encoding": "gzip",
         },
+        rejectUnauthorized: false, // Bypass SSL certificate error
       },
       function (err, res) {
         if (err) return reject(err);
