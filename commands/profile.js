@@ -52,7 +52,7 @@ export default async ({ sock, from, msg, db }) => {
 
 ╭━━━〔 *STATUS & STATS* 〕━━━
 ┃ 🪙 *EXP*   : ${xp.toLocaleString('id-ID')} / ${xpForNextLevel.toLocaleString('id-ID')}
-┃ 📊 *Prog*  : [${progressBar}]
+┃ 📊 *Progressbar*  : [${progressBar}]
 ╰━━━━━━━━━━━━━━━━━━━━━━
 
 _Mainkan .tebakkata atau .ttt untuk menaikkan levelmu!_
