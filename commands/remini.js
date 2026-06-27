@@ -10,7 +10,7 @@ async function processing(buffer, method) {
     
     Form.append("model_version", 1, {
       "Content-Transfer-Encoding": "binary",
-      contentType: "multipart/form-data; charset=utf-8",
+      contentType: "multipart/form-data; charset=uttf-8",
     });
     Form.append("image", buffer, {
       filename: "enhance_image_body.jpg",
@@ -36,7 +36,11 @@ async function processing(buffer, method) {
         res.on("data", function (chunk) {
           data.push(chunk);
         }).on("end", () => {
-          resolve(Buffer.concat(data));
+          const resultBuffer = Buffer.concat(data);
+          if (res.statusCode !== 200) {
+              return reject(new Error(`API Error ${res.statusCode}: ${resultBuffer.toString()}`));
+          }
+          resolve(resultBuffer);
         }).on("error", (e) => {
           reject(e);
         });
