@@ -289,8 +289,32 @@ async function start() {
     const isGroup = from.endsWith("@g.us");
 
     // Database access
+    const senderJid = msg.key.participant || from;
     const groupData = isGroup ? db.getGroup(from) : null;
-    const userData = db.getUser(msg.key.participant || from);
+    const userData = db.getUser(senderJid);
+
+    // ==========================================
+    // SISTEM VERIFIKASI KONTAK (vCard)
+    // ==========================================
+    const isContact = msg.message.contactMessage || msg.message.contactsArrayMessage;
+    if (isContact) {
+      let vcard = "";
+      if (msg.message.contactMessage) {
+        vcard = msg.message.contactMessage.vcard || "";
+      } else {
+        const contacts = msg.message.contactsArrayMessage.contacts || [];
+        vcard = contacts.map(c => c.vcard).join(" ");
+      }
+      
+      const vcardLower = vcard.toLowerCase();
+      // Validasi sederhana: vcard harus mengandung nama "abdbot"
+      if (vcardLower.includes("abdbot")) {
+        db.updateUser(senderJid, { isVerified: true });
+        await sock.sendMessage(from, { text: "✅ Verifikasi Sukses!\nTerima kasih telah menyimpan kontak bot. Anda sekarang dapat menggunakan semua perintah (command) bot ini." }, { quoted: msg });
+        return;
+      }
+    }
+    // ==========================================
 
     // Intercept game input (jawaban) sebelum mengecek prefix "."
     const isGameHandled = await handleGameInput({ sock, msg, from, text, isGroup });
@@ -302,6 +326,16 @@ async function start() {
     }
 
     if (!text.startsWith(".")) return;
+
+    // Cek apakah user sudah terverifikasi sebelum mengeksekusi command
+    if (!userData.isVerified) {
+      await sock.sendMessage(
+        from, 
+        { text: "⚠️ *AKSES DITOLAK*\n\nAnda belum terverifikasi! Silakan simpan nomor bot ini dengan nama *abdbot*, lalu kirim/bagikan kontak tersebut ke ruang chat ini (Pilih ikon klip/attachment -> Bagikan Kontak -> Pilih abdbot) untuk memvalidasi akun Anda dan mulai menggunakan bot." }, 
+        { quoted: msg }
+      );
+      return;
+    }
 
     const [rawCmd, ...args] = text.slice(1).split(/\s+/);
     const cmd = rawCmd.toLowerCase();
