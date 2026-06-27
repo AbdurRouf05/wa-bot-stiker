@@ -255,7 +255,7 @@ async function start() {
             text += ` ⊳ .yt / .tt / .ig (Download Video)\n`;
             text += ` ⊳ .s / .smeme (Buat Sticker)\n`;
             text += ` ⊳ .profile (Cek Status RPG)\n`;
-            text += ` ⊳ .tebakkata / .ttt (Main Game)\n`;
+            text += ` ⊳ .ttt (Tic-Tac-Toe)\n`;
             text += ` ⊳ .math (Kalkulator Pintar)\n\n`;
             text += `Ketik *.menu* untuk melihat seluruh fitur secara lengkap! 🎉`;
             await sock.sendMessage(id, { image: { url: ppUrl }, caption: text, mentions: [num] });

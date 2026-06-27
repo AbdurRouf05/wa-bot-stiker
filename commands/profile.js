@@ -55,7 +55,7 @@ export default async ({ sock, from, msg, db }) => {
 ┃ 📊 *Progressbar*  : [${progressBar}]
 ╰━━━━━━━━━━━━━━━━━━━━━━
 
-_Mainkan .tebakkata atau .ttt untuk menaikkan levelmu!_
+_Mainkan .ttt untuk menaikkan levelmu!_
   `.trim();
 
   let ppUrl;
