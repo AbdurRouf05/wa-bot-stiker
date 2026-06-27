@@ -58,9 +58,13 @@ export default async ({ sock, msg, from, getMediaBuffer }) => {
   
   try {
     let mediaMsg = isImage ? msg : { message: msg.message.extendedTextMessage.contextInfo.quotedMessage };
-    const buffer = await getMediaBuffer(mediaMsg);
+    const mediaData = await getMediaBuffer(mediaMsg);
     
-    const enhancedBuffer = await processing(buffer, "enhance");
+    if (!mediaData || !mediaData.buffer) {
+        throw new Error("Gagal mengunduh media dari pesan.");
+    }
+    
+    const enhancedBuffer = await processing(mediaData.buffer, "enhance");
     
     await sock.sendMessage(
       from, 
