@@ -246,7 +246,18 @@ async function start() {
             try { ppUrl = await sock.profilePictureUrl(num, "image"); } 
             catch { ppUrl = "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png"; }
             
-            const text = `👋 Halo @${num.split("@")[0]}!\nSelamat datang di grup *${groupName}*.\nSemoga betah ya! 🎉`;
+            let text = `👋 Halo @${num.split("@")[0]}!\nSelamat datang di grup *${groupName}*.\n\n`;
+            text += `🤖 *INFO BOT ABD* 🤖\n`;
+            text += `Saya adalah bot asisten grup ini. Anda bisa menggunakan berbagai fitur seru di sini!\n\n`;
+            text += `📖 *PANDUAN SINGKAT*\n`;
+            text += `Ketik perintah berawalan titik (\`.\`) untuk berinteraksi dengan saya. Contoh: \`.menu\`\n\n`;
+            text += `*DAFTAR MENU UTAMA:*\n`;
+            text += ` ⊳ .yt / .tt / .ig (Download Video)\n`;
+            text += ` ⊳ .s / .smeme (Buat Sticker)\n`;
+            text += ` ⊳ .profile (Cek Status RPG)\n`;
+            text += ` ⊳ .tebakkata / .ttt (Main Game)\n`;
+            text += ` ⊳ .math (Kalkulator Pintar)\n\n`;
+            text += `Ketik *.menu* untuk melihat seluruh fitur secara lengkap! 🎉`;
             await sock.sendMessage(id, { image: { url: ppUrl }, caption: text, mentions: [num] });
           }
         }
