@@ -22,6 +22,7 @@ export default async ({ sock, from, msg }) => {
  ⊳ .qc (Quote sticker)
  ⊳ .remini (Enhance gambar)
 
+
 *👥 GROUP TOOLS*
  ⊳ .hidetag (Mention all)
  ⊳ .delete (Hapus pesan bot)

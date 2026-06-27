@@ -1,68 +1,77 @@
-import fs from "fs";
-import path from "path";
-import { execFile } from "child_process";
-import { fileURLToPath } from "url";
+import FormData from "form-data";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const TEMP_DIR = path.join(__dirname, "..", "temp");
-
-if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
-
-export default async (ctx) => {
-  const { sock, from, msg, getMediaBuffer } = ctx;
-  const media = await getMediaBuffer(msg);
-
-  if (!media || media.type !== "imageMessage") {
-    return await sock.sendMessage(
-      from,
-      { text: "Reply foto dengan *.remini* untuk memperjelas gambar." },
-      { quoted: msg }
-    );
-  }
-
-  const fileId = Date.now();
-  const inputPath = path.join(TEMP_DIR, `remini_in_${fileId}.jpg`);
-  const outputPath = path.join(TEMP_DIR, `remini_out_${fileId}.jpg`);
-  const pythonScript = path.join(__dirname, "..", "utils", "enhance.py");
-
-  try {
-    await sock.sendMessage(from, { text: "⏳ *Sedang memproses foto...* (Local AI)" }, { quoted: msg });
-
-    // Simpan buffer ke file temp
-    fs.writeFileSync(inputPath, media.buffer);
-
-    // Jalankan script Python
-    await new Promise((resolve, reject) => {
-      execFile("python3", [pythonScript, inputPath, outputPath], (err, stdout, stderr) => {
-        if (err) {
-          console.error("Python Error:", stderr);
-          return reject(err);
-        }
-        resolve(stdout);
-      });
+async function processing(buffer, method) {
+  return new Promise((resolve, reject) => {
+    let Methods = ["enhance", "recolor", "dehaze"];
+    method = Methods.includes(method) ? method : Methods[0];
+    
+    let Form = new FormData();
+    let scheme = "https://inferenceengine.vyro.ai/" + method;
+    
+    Form.append("model_version", 1, {
+      "Content-Transfer-Encoding": "binary",
+      contentType: "multipart/form-data; charset=utf-8",
     });
-
-    if (!fs.existsSync(outputPath)) {
-        throw new Error("Gagal menghasilkan foto yang ditingkatkan.");
-    }
-
-    const resultBuffer = fs.readFileSync(outputPath);
-
-    await sock.sendMessage(
-      from,
-      { 
-        image: resultBuffer,
-        caption: "✅ *Proses Remini Selesai!* (Local AI)\nFoto telah diperjelas tanpa API eksternal." 
+    Form.append("image", buffer, {
+      filename: "enhance_image_body.jpg",
+      contentType: "image/jpeg",
+    });
+    
+    Form.submit(
+      {
+        url: scheme,
+        host: "inferenceengine.vyro.ai",
+        path: "/" + method,
+        protocol: "https:",
+        headers: {
+          "User-Agent": "okhttp/4.9.3",
+          Connection: "Keep-Alive",
+          "Accept-Encoding": "gzip",
+        },
       },
+      function (err, res) {
+        if (err) return reject(err);
+        let data = [];
+        res.on("data", function (chunk) {
+          data.push(chunk);
+        }).on("end", () => {
+          resolve(Buffer.concat(data));
+        }).on("error", (e) => {
+          reject(e);
+        });
+      }
+    );
+  });
+}
+
+export default async ({ sock, msg, from, getMediaBuffer }) => {
+  const isImage = msg.message?.imageMessage;
+  const isQuotedImage = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
+  
+  if (!isImage && !isQuotedImage) {
+    await sock.sendMessage(from, { text: "⚠️ Kirim atau balas sebuah foto dengan caption *.remini* untuk memperjernihnya!" }, { quoted: msg });
+    return;
+  }
+  
+  await sock.sendMessage(from, { react: { text: "⏳", key: msg.key } });
+  
+  try {
+    let mediaMsg = isImage ? msg : { message: msg.message.extendedTextMessage.contextInfo.quotedMessage };
+    const buffer = await getMediaBuffer(mediaMsg);
+    
+    const enhancedBuffer = await processing(buffer, "enhance");
+    
+    await sock.sendMessage(
+      from, 
+      { image: enhancedBuffer, caption: "✨ *REMINI AI* ✨\n\nBerhasil diperjernih oleh Bot ABD!" }, 
       { quoted: msg }
     );
-
+    
+    await sock.sendMessage(from, { react: { text: "✅", key: msg.key } });
+    
   } catch (error) {
     console.error("Remini Error:", error);
-    await sock.sendMessage(from, { text: `❌ Gagal memproses Remini: ${error.message}` }, { quoted: msg });
-  } finally {
-    try { if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath); } catch {}
-    try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch {}
+    await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
+    await sock.sendMessage(from, { text: "⚠️ Gagal memperjernih gambar. Server AI mungkin sedang sibuk atau gambar terlalu besar." }, { quoted: msg });
   }
 };
