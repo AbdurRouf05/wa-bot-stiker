@@ -29,7 +29,6 @@ export default async ({ sock, from, msg }) => {
 *⚔️ RPG & GAMES*
  ⊳ .profile (Cek status RPG)
  ⊳ .leaderboard (Top XP)
- ⊳ .tebakkata (Tebak kata)
  ⊳ .ttt @tag (Tic-Tac-Toe)
 
 *🎭 FUN & UTILITY*

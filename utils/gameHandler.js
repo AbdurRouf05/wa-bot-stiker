@@ -6,34 +6,6 @@ export async function handleGameInput({ sock, msg, from, text, isGroup }) {
 
   const sender = msg.key.participant || msg.key.remoteJid;
 
-  // 1. TEBAK KATA
-  if (global.games?.tebakkata?.[from]) {
-    const game = global.games.tebakkata[from];
-    
-    // Abaikan jika pesan dimulai dengan prefix command
-    if (text.startsWith(".")) return false;
-
-    if (text.toLowerCase() === game.jawaban.toLowerCase()) {
-      clearTimeout(game.timer);
-      const reward = 500; // Contoh reward
-      
-      const userData = db.getUser(sender);
-      db.updateUser(sender, { xp: (userData.xp || 0) + reward });
-      
-      await sock.sendMessage(
-        from,
-        { 
-          text: `🎉 *BENAR!* 🎉\n\nJawaban: *${game.jawaban}*\nPemain: @${sender.split("@")[0]}\nHadiah: +${reward} XP`,
-          mentions: [sender]
-        },
-        { quoted: msg }
-      );
-      
-      delete global.games.tebakkata[from];
-      return true; // Pesan sudah di-handle
-    }
-  }
-
   // 2. TIC-TAC-TOE
   if (global.games?.ttt?.[from]) {
     const game = global.games.ttt[from];
