@@ -68,7 +68,7 @@ class Database {
   // Helper untuk User
   getUser(jid) {
     if (!this.data.users[jid]) {
-      this.data.users[jid] = { limit: 20, premium: false };
+      this.data.users[jid] = { limit: 20, premium: false, xp: 0 };
       this.save();
     }
     return this.data.users[jid];
