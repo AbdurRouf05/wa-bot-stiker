@@ -37,7 +37,7 @@ export default async ({ sock, from, msg }) => {
  ⊳ .math (Kalkulator)
 
 ╭━━━━━━━━━━━━━━━━━━━
-┃ ⚡ _Powered by Baileys_
+┃
 ┃ 📌 _Ketik command untuk mulai!_
 ╰━━━━━━━━━━━━━━━━━━━
   `.trim();
