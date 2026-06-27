@@ -58,12 +58,15 @@ export default async ({ sock, from, msg, db }) => {
 _Mainkan .tebakkata atau .ttt untuk menaikkan levelmu!_
   `.trim();
 
+  let ppUrl;
   try {
     // Coba ambil foto profil WA pengguna
-    const ppUrl = await sock.profilePictureUrl(sender, 'image');
-    await sock.sendMessage(from, { image: { url: ppUrl }, caption: text }, { quoted: msg });
+    ppUrl = await sock.profilePictureUrl(sender, 'image');
   } catch (err) {
-    // Jika gagal (misal profil di-privat), kirim teks saja
-    await sock.sendMessage(from, { text }, { quoted: msg });
+    // Jika gagal (karena diprivat atau tidak ada foto), gunakan gambar default
+    ppUrl = "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png";
   }
+
+  // Kirim selalu dengan gambar profil (asli atau default)
+  await sock.sendMessage(from, { image: { url: ppUrl }, caption: text }, { quoted: msg });
 };
