@@ -1,53 +1,4 @@
-import FormData from "form-data";
-
-async function processing(buffer, method) {
-  return new Promise((resolve, reject) => {
-    let Methods = ["enhance", "recolor", "dehaze"];
-    method = Methods.includes(method) ? method : Methods[0];
-    
-    let Form = new FormData();
-    let scheme = "https://inferenceengine.vyro.ai/" + method;
-    
-    Form.append("model_version", 1, {
-      "Content-Transfer-Encoding": "binary",
-      contentType: "multipart/form-data; charset=uttf-8",
-    });
-    Form.append("image", buffer, {
-      filename: "enhance_image_body.jpg",
-      contentType: "image/jpeg",
-    });
-    
-    Form.submit(
-      {
-        url: scheme,
-        host: "inferenceengine.vyro.ai",
-        path: "/" + method,
-        protocol: "https:",
-        headers: {
-          "User-Agent": "okhttp/4.9.3",
-          Connection: "Keep-Alive",
-          "Accept-Encoding": "gzip",
-        },
-        rejectUnauthorized: false, // Bypass SSL certificate error
-      },
-      function (err, res) {
-        if (err) return reject(err);
-        let data = [];
-        res.on("data", function (chunk) {
-          data.push(chunk);
-        }).on("end", () => {
-          const resultBuffer = Buffer.concat(data);
-          if (res.statusCode !== 200) {
-              return reject(new Error(`API Error ${res.statusCode}: ${resultBuffer.toString()}`));
-          }
-          resolve(resultBuffer);
-        }).on("error", (e) => {
-          reject(e);
-        });
-      }
-    );
-  });
-}
+import axios from "axios";
 
 export default async ({ sock, msg, from, getMediaBuffer }) => {
   const isImage = msg.message?.imageMessage;
@@ -68,11 +19,40 @@ export default async ({ sock, msg, from, getMediaBuffer }) => {
         throw new Error("Gagal mengunduh media dari pesan.");
     }
     
-    const enhancedBuffer = await processing(mediaData.buffer, "enhance");
+    // Ubah gambar asli ke format base64
+    const base64Image = mediaData.buffer.toString('base64');
+    
+    // Panggil RapidAPI (Photo Enhance API)
+    const response = await axios.post("https://photo-enhance-api.p.rapidapi.com/api/scale", {
+      image_base64: base64Image,
+      type: "clean",
+      scale_factor: 2
+    }, {
+      headers: {
+        "X-RapidAPI-Host": "photo-enhance-api.p.rapidapi.com",
+        "X-RapidAPI-Key": "c60a569d9bmshc8784a5743699a0p10423cjsn8b083ea602a2",
+        "Content-Type": "application/json"
+      },
+      timeout: 60000 // tunggu maksimal 1 menit
+    });
+
+    let finalBuffer;
+
+    if (response.data && response.data.image_base64) {
+      finalBuffer = Buffer.from(response.data.image_base64, 'base64');
+    } else if (response.data && response.data.image_url) {
+      // Jika ternyata API mengembalikan URL gambar
+      const imgRes = await axios.get(response.data.image_url, { responseType: 'arraybuffer' });
+      finalBuffer = Buffer.from(imgRes.data);
+    } else if (response.data && response.data.image) { // kadang response key-nya 'image'
+      finalBuffer = Buffer.from(response.data.image, 'base64');
+    } else {
+      throw new Error(`Format response API tidak dikenali. Data: ${JSON.stringify(response.data).substring(0, 50)}`);
+    }
     
     await sock.sendMessage(
       from, 
-      { image: enhancedBuffer, caption: "✨ *REMINI AI* ✨\n\nBerhasil diperjernih oleh Bot ABD!" }, 
+      { image: finalBuffer, caption: "✨ *REMINI AI (RapidAPI)* ✨\n\nBerhasil diperjernih oleh Bot ABD!" }, 
       { quoted: msg }
     );
     
@@ -81,6 +61,8 @@ export default async ({ sock, msg, from, getMediaBuffer }) => {
   } catch (error) {
     console.error("Remini Error:", error);
     await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
-    await sock.sendMessage(from, { text: "⚠️ Gagal memperjernih gambar. Server AI mungkin sedang sibuk atau gambar terlalu besar." }, { quoted: msg });
+    
+    const errMessage = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+    await sock.sendMessage(from, { text: `⚠️ Gagal memperjernih gambar.\n\nDetail Error: ${errMessage}` }, { quoted: msg });
   }
 };
