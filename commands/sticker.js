@@ -149,15 +149,18 @@ async function handleStickerToMP4({ sock, msg, from, downloadContentFromMessage 
   }
 
   const fileId = Date.now();
-  const webpPath = path.join(TEMP_DIR, `${fileId}.webp`);
+  const gifPath = path.join(TEMP_DIR, `${fileId}.gif`);
   const mp4Path = path.join(TEMP_DIR, `${fileId}.mp4`);
 
   try {
-    fs.writeFileSync(webpPath, buffer);
+    // Gunakan sharp untuk mengonversi animated webp ke gif
+    await sharp(buffer, { animated: true })
+      .gif()
+      .toFile(gifPath);
 
-    // Langsung WebP → MP4 pakai FFmpeg (versi modern sudah support animated webp)
+    // Konversi GIF ke MP4 pakai FFmpeg (FFmpeg lebih stabil baca GIF daripada WebP animasi)
     await runCmd("ffmpeg", [
-      "-y", "-i", webpPath,
+      "-y", "-i", gifPath,
       "-pix_fmt", "yuv420p",
       "-c:v", "libx264",
       "-movflags", "faststart",
@@ -174,7 +177,7 @@ async function handleStickerToMP4({ sock, msg, from, downloadContentFromMessage 
     console.error("❌ tomp4 error:", err.message);
     await sock.sendMessage(from, { text: "❌ Gagal konversi stiker ke video. Pastikan stiker ini animasi." }, { quoted: msg });
   } finally {
-    try { fs.unlinkSync(webpPath); } catch {}
+    try { fs.unlinkSync(gifPath); } catch {}
     try { fs.unlinkSync(mp4Path); } catch {}
   }
 }
