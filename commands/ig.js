@@ -73,31 +73,18 @@ export default async ({ sock, msg, from, args }) => {
     }
 
     const data = await response.json();
-    let mediaUrl, mediaType, username, caption;
-
-    if (Array.isArray(data) && data.length > 0) {
-      const firstItem = data[0];
-      if (firstItem.urls && firstItem.urls.length > 0) {
-        const videoUrlObj = firstItem.urls.find(url => url.extension === 'mp4');
-        if (videoUrlObj) {
-          mediaUrl = videoUrlObj.url;
-          mediaType = 'video';
-        }
-      }
-      if (firstItem.meta) {
-        username = firstItem.meta.username || 'Instagram';
-        caption = firstItem.meta.title || '';
-      }
-      if (!mediaUrl && firstItem.pictureUrl) {
-        mediaUrl = firstItem.pictureUrl;
-        mediaType = 'image';
-      }
-    } else {
-      throw new Error('Struktur response API tidak dikenali');
+    
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error('Struktur response API tidak dikenali atau kosong');
     }
 
-    if (!mediaUrl) {
-      throw new Error('Tidak bisa menemukan URL media dalam response');
+    const firstItem = data[0];
+    let username = 'Instagram';
+    let caption = '';
+    
+    if (firstItem.meta) {
+      username = firstItem.meta.username || 'Instagram';
+      caption = firstItem.meta.title || '';
     }
 
     await sock.sendMessage(
@@ -106,32 +93,67 @@ export default async ({ sock, msg, from, args }) => {
       { quoted: msg }
     );
 
-    const mediaResponse = await fetch(mediaUrl);
-    if (!mediaResponse.ok) {
-      throw new Error(`Gagal download media: HTTP ${mediaResponse.status}`);
-    }
+    for (let i = 0; i < data.length; i++) {
+      const item = data[i];
+      let mediaUrl, mediaType;
 
-    const mediaBuffer = await mediaResponse.buffer();
-    const fileSize = mediaBuffer.length;
-
-    if (fileSize > 90 * 1024 * 1024) {
-      await sock.sendMessage(from, { text: `❌ Media terlalu besar! (${(fileSize / (1024*1024)).toFixed(1)}MB)` });
-      return;
-    }
-
-    const finalCaption = `✅ *Instagram Download Selesai!*\n👤 ${username}${caption ? `\n📝 ${caption.substring(0, 100)}${caption.length > 100 ? '...' : ''}` : ''}`;
-
-    if (mediaType === 'video') {
-      if (fileSize < 16 * 1024 * 1024) {
-        await sock.sendMessage(from, { video: mediaBuffer, caption: finalCaption, fileName: `instagram_${Date.now()}.mp4` });
-      } else {
-        await sock.sendMessage(from, { document: mediaBuffer, caption: finalCaption + '\n📁 Dikirim sebagai document', fileName: `instagram_${Date.now()}.mp4`, mimetype: 'video/mp4' });
+      if (item.urls && item.urls.length > 0) {
+        const videoUrlObj = item.urls.find(url => url.extension === 'mp4');
+        if (videoUrlObj) {
+          mediaUrl = videoUrlObj.url;
+          mediaType = 'video';
+        }
       }
-    } else {
-      if (fileSize < 5 * 1024 * 1024) {
-        await sock.sendMessage(from, { image: mediaBuffer, caption: finalCaption });
-      } else {
-        await sock.sendMessage(from, { document: mediaBuffer, caption: finalCaption + '\n📁 Dikirim sebagai document', fileName: `instagram_${Date.now()}.jpg`, mimetype: 'image/jpeg' });
+      
+      if (!mediaUrl && item.pictureUrl) {
+        mediaUrl = item.pictureUrl;
+        mediaType = 'image';
+      }
+
+      if (!mediaUrl) {
+        console.error(`Tidak ada mediaUrl untuk slide ${i+1}`);
+        continue;
+      }
+
+      try {
+        const mediaResponse = await fetch(mediaUrl);
+        if (!mediaResponse.ok) {
+          console.error(`Gagal download media slide ${i+1}: HTTP ${mediaResponse.status}`);
+          continue;
+        }
+
+        const mediaBuffer = await mediaResponse.buffer();
+        const fileSize = mediaBuffer.length;
+
+        if (fileSize > 90 * 1024 * 1024) {
+          await sock.sendMessage(from, { text: `❌ Media slide ${i+1} terlalu besar! (${(fileSize / (1024*1024)).toFixed(1)}MB)` });
+          continue;
+        }
+
+        let finalCaption = `✅ *Instagram Download*\n👤 ${username}`;
+        if (data.length > 1) {
+          finalCaption = `✅ *Instagram Slide (${i+1}/${data.length})*\n👤 ${username}`;
+        }
+        // Include caption on the first slide
+        if (i === 0 && caption) {
+          finalCaption += `\n📝 ${caption.substring(0, 100)}${caption.length > 100 ? '...' : ''}`;
+        }
+
+        if (mediaType === 'video') {
+          if (fileSize < 16 * 1024 * 1024) {
+            await sock.sendMessage(from, { video: mediaBuffer, caption: finalCaption, fileName: `instagram_${Date.now()}.mp4` });
+          } else {
+            await sock.sendMessage(from, { document: mediaBuffer, caption: finalCaption + '\n📁 Dikirim sebagai document', fileName: `instagram_${Date.now()}.mp4`, mimetype: 'video/mp4' });
+          }
+        } else {
+          if (fileSize < 5 * 1024 * 1024) {
+            await sock.sendMessage(from, { image: mediaBuffer, caption: finalCaption });
+          } else {
+            await sock.sendMessage(from, { document: mediaBuffer, caption: finalCaption + '\n📁 Dikirim sebagai document', fileName: `instagram_${Date.now()}.jpg`, mimetype: 'image/jpeg' });
+          }
+        }
+      } catch (e) {
+        console.error(`Error downloading slide ${i+1}:`, e.message);
       }
     }
 

@@ -73,31 +73,54 @@ export default async ({ sock, msg, from, args }) => {
     const response = await fetch(apiUrl);
     const data = await response.json();
 
-    if (data.data && data.data.play) {
-      let videoUrl = data.data.play;
-      if (!videoUrl.startsWith('http')) {
-        videoUrl = `https://tikwm.com${videoUrl}`;
-      }
-      
-      const title = data.data.title || 'Video TikTok';
+    if (data.data && (data.data.play || data.data.images)) {
+      const title = data.data.title || 'TikTok Media';
       const author = data.data.author?.nickname || 'Unknown';
 
       await sock.sendMessage(
         from,
-        { text: `📥 *Video ditemukan!*\n👤 ${author}\n⏳ Mendownload...` },
+        { text: `📥 *Media ditemukan!*\n👤 ${author}\n⏳ Mendownload...` },
         { quoted: msg }
       );
 
-      console.log('Download dari:', videoUrl);
-      const videoResponse = await fetch(videoUrl);
-      
-      if (!videoResponse.ok) {
-        throw new Error(`HTTP ${videoResponse.status}: ${videoResponse.statusText}`);
+      // Handle image carousels (slides)
+      if (data.data.images && Array.isArray(data.data.images) && data.data.images.length > 0) {
+        for (let i = 0; i < data.data.images.length; i++) {
+          const imgUrl = data.data.images[i];
+          try {
+            const imgResponse = await fetch(imgUrl);
+            if (imgResponse.ok) {
+              const imgBuffer = await imgResponse.buffer();
+              await sock.sendMessage(
+                from, 
+                { image: imgBuffer, caption: `✅ *TikTok Slide (${i+1}/${data.data.images.length})*\n🎵 ${title}\n👤 ${author}` }
+              );
+            }
+          } catch (e) {
+            console.error(`Gagal mendownload slide ${i+1}:`, e.message);
+          }
+        }
+        return;
       }
 
-      const videoBuffer = await videoResponse.buffer();
-      await sendVideo(sock, from, videoBuffer, title, author);
-      return;
+      // Handle standard video
+      if (data.data.play) {
+        let videoUrl = data.data.play;
+        if (!videoUrl.startsWith('http')) {
+          videoUrl = `https://tikwm.com${videoUrl}`;
+        }
+        
+        console.log('Download dari:', videoUrl);
+        const videoResponse = await fetch(videoUrl);
+        
+        if (!videoResponse.ok) {
+          throw new Error(`HTTP ${videoResponse.status}: ${videoResponse.statusText}`);
+        }
+
+        const videoBuffer = await videoResponse.buffer();
+        await sendVideo(sock, from, videoBuffer, title, author);
+        return;
+      }
     }
 
     // API 2: Alternatif

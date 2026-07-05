@@ -1,4 +1,6 @@
 // utils/exif.js — Tambahkan metadata EXIF ke stiker WebP (Simple & Safe)
+import webpmux from "node-webpmux";
+
 const STICKER_PACK = process.env.STICKER_PACK || "Abd Bot";
 const STICKER_AUTHOR = process.env.STICKER_AUTHOR || "Bot";
 
@@ -6,12 +8,10 @@ const STICKER_AUTHOR = process.env.STICKER_AUTHOR || "Bot";
  * Tambahkan EXIF metadata ke buffer WebP.
  * Jika gagal, return buffer asli tanpa EXIF (graceful degradation).
  */
-export function addExifToWebpBuffer(webpBuffer, packName = STICKER_PACK, author = STICKER_AUTHOR) {
+export async function addExifToWebpBuffer(webpBuffer, packName = STICKER_PACK, author = STICKER_AUTHOR) {
   try {
-    // Validasi WebP
-    if (!webpBuffer || webpBuffer.length < 12) return webpBuffer;
-    if (webpBuffer.slice(0, 4).toString() !== "RIFF") return webpBuffer;
-    if (webpBuffer.slice(8, 12).toString() !== "WEBP") return webpBuffer;
+    const img = new webpmux.Image();
+    await img.load(webpBuffer);
 
     // Buat JSON metadata
     const json = JSON.stringify({
@@ -35,21 +35,9 @@ export function addExifToWebpBuffer(webpBuffer, packName = STICKER_PACK, author 
     exifPayload.writeUInt32LE(22, 18);      // Offset to data
     jsonBuf.copy(exifPayload, 22);
 
-    // Buat EXIF RIFF chunk
-    const chunkHeader = Buffer.alloc(8);
-    chunkHeader.write("EXIF", 0);
-    chunkHeader.writeUInt32LE(exifPayload.length, 4);
+    img.exif = exifPayload;
 
-    // Padding jika ganjil
-    const padding = exifPayload.length % 2 !== 0 ? Buffer.alloc(1) : Buffer.alloc(0);
-
-    // Gabung: original WebP + EXIF chunk (append di akhir)
-    const result = Buffer.concat([webpBuffer, chunkHeader, exifPayload, padding]);
-
-    // Update RIFF total size
-    result.writeUInt32LE(result.length - 8, 4);
-
-    return result;
+    return await img.save(null);
   } catch (err) {
     console.error("[exif] Gagal menambahkan EXIF, kirim tanpa metadata:", err.message);
     return webpBuffer; // Graceful: return tanpa EXIF

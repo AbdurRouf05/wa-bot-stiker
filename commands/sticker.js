@@ -59,7 +59,7 @@ async function handleStickerCreate({ sock, msg, from, getMediaBuffer }) {
         .webp({ quality: 80 })
         .toBuffer();
 
-      const stickerBuffer = addExifToWebpBuffer(webpBuf);
+      const stickerBuffer = await addExifToWebpBuffer(webpBuf);
       await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: msg });
     } else {
       // Video → Animated WebP pakai FFmpeg
@@ -80,7 +80,7 @@ async function handleStickerCreate({ sock, msg, from, getMediaBuffer }) {
       ]);
 
       const rawBuffer = fs.readFileSync(webpPath);
-      const stickerBuffer = addExifToWebpBuffer(rawBuffer);
+      const stickerBuffer = await addExifToWebpBuffer(rawBuffer);
       await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: msg });
 
       // Cleanup

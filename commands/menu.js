@@ -13,6 +13,7 @@ export default async ({ sock, from, msg }) => {
  ⊳ .yt <url> (YouTube)
  ⊳ .tt <url> (TikTok)
  ⊳ .ig <url> (Instagram)
+ ⊳ .pin <url> (Pinterest)
 
 *🎨 MEDIA & STICKER*
  ⊳ .s (Buat sticker)
