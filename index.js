@@ -3,6 +3,13 @@ if (!globalThis.crypto || !globalThis.crypto.subtle) {
   globalThis.crypto = webcrypto;
 }
 
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 import "dotenv/config";
 import makeWASocket, {
   useMultiFileAuthState,
@@ -167,8 +174,8 @@ async function start() {
 
       console.log("Connection closed. status:", statusCode, "isBadSession:", isBadSession);
 
-      if (statusCode === DisconnectReason.loggedOut || isBadSession) {
-        console.log("⚠️ Session rusak atau ter-logout. Menghapus folder auth...");
+      if (statusCode === DisconnectReason.loggedOut) {
+        console.log("⚠️ Session ter-logout. Menghapus folder auth...");
         
         // Simpan sesi yang rusak agar tidak dipulihkan lagi setelah restart
         if (process.env.SESSION_ID) {
@@ -181,7 +188,11 @@ async function start() {
         // Beri waktu sejenak agar penghapusan selesai sebelum exit
         setTimeout(() => process.exit(1), 1000);
       } else {
-        console.log("Koneksi terputus, mencoba menyambung kembali (process.exit)...");
+        if (isBadSession) {
+          console.log("⚠️ Terjadi error enkripsi (Bad MAC). Bot akan restart untuk sinkronisasi ulang tanpa menghapus sesi utama...");
+        } else {
+          console.log("Koneksi terputus, mencoba menyambung kembali (process.exit)...");
+        }
         // Keluar dari proses Node agar tidak terjadi tumpukan instance bot 
         // yang menyebabkan file sesi (creds.json) saling bertabrakan/corrupt.
         // Beri jeda 3 detik agar Baileys sempat menyimpan sesi ke disk sebelum dimatikan.
