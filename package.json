@@ -24,12 +24,5 @@
     "sharp": "^0.33.2",
     "youtubei.js": "^17.0.1",
     "ytdl-core": "^4.11.5"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@whiskeysockets/baileys",
-      "protobufjs",
-      "sharp"
-    ]
   }
 }
