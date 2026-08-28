@@ -88,17 +88,16 @@ function getTextFromMessage(msg) {
   );
 }
 
-async function start() {
-  await loadCommands();
+let sock = null;
+let isReconnecting = false;
+let pairingCodeRequested = false;
 
-  // path folder auth (session Baileys)
-  const authDir = path.join(__dirname, "auth");
-  if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
+// path folder auth (session Baileys)
+const authDir = path.join(__dirname, "auth");
+const badSessionFile = path.join(__dirname, ".bad_session");
 
-  // ====== Session String Handler ======
+function restoreSessionIdIfPresent() {
   const sessionId = process.env.SESSION_ID;
-  const badSessionFile = path.join(__dirname, ".bad_session");
-
   if (sessionId && !fs.existsSync(path.join(authDir, "creds.json"))) {
     let isBad = false;
     if (fs.existsSync(badSessionFile)) {
@@ -108,7 +107,7 @@ async function start() {
         console.log("⚠️ SESSION_ID saat ini rusak/kedaluwarsa. Mengabaikan pemulihan sesi.");
       } else {
         // SESSION_ID sudah diganti yang baru, hapus file bad_session
-        fs.unlinkSync(badSessionFile);
+        try { fs.unlinkSync(badSessionFile); } catch {}
       }
     }
 
@@ -122,30 +121,50 @@ async function start() {
       }
     }
   }
+}
+
+async function connectToWhatsApp() {
+  if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
+
+  // Bersihkan instance socket lama agar tidak ada memory leak / listener tumpang tindih
+  if (sock) {
+    try {
+      sock.ev.removeAllListeners();
+      if (typeof sock.end === "function") sock.end();
+    } catch (e) {
+      console.error("⚠️ Cleanup socket lama error:", e.message);
+    }
+    sock = null;
+  }
+
+  restoreSessionIdIfPresent();
 
   const phoneNumber = process.argv[2] || process.env.OWNER;
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
-  const { version, isLatest } = await fetchLatestBaileysVersion();
+  const { version, isLatest } = await fetchLatestBaileysVersion().catch(() => ({
+    version: [2, 3000, 1015901307],
+    isLatest: false,
+  }));
+
   console.log(`📡 Menggunakan WA v${version.join(".")}, isLatest: ${isLatest}`);
 
-  const sock = makeWASocket.default ? makeWASocket.default({
+  const socketOptions = {
     version,
     auth: state,
     logger: P({ level: "silent" }),
     printQRInTerminal: false,
     browser: phoneNumber ? ["Chrome", "Chrome", "130.0.0"] : ["Abdbot", "Chrome", "1.0.0"],
-  }) : makeWASocket({
-    version,
-    auth: state,
-    logger: P({ level: "silent" }),
-    printQRInTerminal: false,
-    browser: phoneNumber ? ["Chrome", "Chrome", "130.0.0"] : ["Abdbot", "Chrome", "1.0.0"],
-  });
+    connectTimeoutMs: 60000,
+    keepAliveIntervalMs: 25000,
+    defaultQueryTimeoutMs: 60000,
+    emitOwnEvents: false,
+    markOnlineOnConnect: true,
+    syncFullHistory: false,
+  };
 
-  // Pairing Code request dipindah ke dalam event qr agar tidak mengganggu sesi yang sudah aktif
+  sock = makeWASocket.default ? makeWASocket.default(socketOptions) : makeWASocket(socketOptions);
 
-  let pairingCodeRequested = false;
-  sock.ev.on("connection.update", (update) => {
+  sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
     
     // Selalu tampilkan QR code di terminal sebagai alternatif jika Pairing Code gagal
@@ -158,8 +177,10 @@ async function start() {
         pairingCodeRequested = true;
         setTimeout(async () => {
           try {
-            const code = await sock.requestPairingCode(phoneNumber);
-            console.log(`\n🔑 PAIRING CODE: ${code}\n`);
+            if (sock && !sock.authState?.creds?.registered) {
+              const code = await sock.requestPairingCode(phoneNumber);
+              console.log(`\n🔑 PAIRING CODE: ${code}\n`);
+            }
           } catch (err) {
             console.error("❌ Gagal request pairing code:", err.message);
           }
@@ -169,37 +190,39 @@ async function start() {
 
     if (connection === "close") {
       const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode;
-      const shouldRestart = statusCode !== DisconnectReason.loggedOut;
+      const isLoggedOut = statusCode === DisconnectReason.loggedOut;
       const isBadSession = lastDisconnect?.error?.message?.includes("Bad MAC");
 
-      console.log("Connection closed. status:", statusCode, "isBadSession:", isBadSession);
+      console.log(`⚠️ Koneksi terputus. Status: ${statusCode || "unknown"}. isBadSession: ${Boolean(isBadSession)}`);
 
-      if (statusCode === DisconnectReason.loggedOut) {
+      if (isReconnecting) return;
+      isReconnecting = true;
+
+      if (isLoggedOut) {
         console.log("⚠️ Session ter-logout. Menghapus folder auth...");
-        
-        // Simpan sesi yang rusak agar tidak dipulihkan lagi setelah restart
         if (process.env.SESSION_ID) {
-          fs.writeFileSync(path.join(__dirname, ".bad_session"), process.env.SESSION_ID);
+          try { fs.writeFileSync(badSessionFile, process.env.SESSION_ID); } catch {}
         }
-        
-        fs.rmSync(authDir, { recursive: true, force: true });
-        
-        console.log("Memulai ulang bot (process exit)...");
-        // Beri waktu sejenak agar penghapusan selesai sebelum exit
-        setTimeout(() => process.exit(1), 1000);
+        try { fs.rmSync(authDir, { recursive: true, force: true }); } catch {}
+        pairingCodeRequested = false;
+
+        console.log("🔄 Menghubungkan ulang untuk membuat sesi baru dalam 3 detik...");
+        setTimeout(() => {
+          isReconnecting = false;
+          connectToWhatsApp();
+        }, 3000);
       } else {
-        if (isBadSession) {
-          console.log("⚠️ Terjadi error enkripsi (Bad MAC). Bot akan restart untuk sinkronisasi ulang tanpa menghapus sesi utama...");
-        } else {
-          console.log("Koneksi terputus, mencoba menyambung kembali (process.exit)...");
-        }
-        // Keluar dari proses Node agar tidak terjadi tumpukan instance bot 
-        // yang menyebabkan file sesi (creds.json) saling bertabrakan/corrupt.
-        // Beri jeda 3 detik agar Baileys sempat menyimpan sesi ke disk sebelum dimatikan.
-        setTimeout(() => process.exit(1), 3000);
+        const retryDelay = (statusCode === DisconnectReason.restartRequired || statusCode === 515) ? 1500 : 5000;
+        console.log(`🔄 Menyambung kembali secara otomatis dalam ${retryDelay / 1000} detik...`);
+        setTimeout(() => {
+          isReconnecting = false;
+          connectToWhatsApp();
+        }, retryDelay);
       }
     } else if (connection === "open") {
-      console.log("✅ Bot sudah terhubung ke WhatsApp!");
+      isReconnecting = false;
+      pairingCodeRequested = false;
+      console.log("✅ Bot WhatsApp berhasil terhubung!");
     }
   });
 
@@ -378,4 +401,10 @@ async function start() {
   });
 }
 
+async function start() {
+  await loadCommands();
+  await connectToWhatsApp();
+}
+
 start();
+
