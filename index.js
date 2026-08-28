@@ -16,6 +16,9 @@ import makeWASocket, {
   DisconnectReason,
   downloadContentFromMessage,
   fetchLatestBaileysVersion,
+  isJidBroadcast,
+  isJidNewsletter,
+  isJidStatusBroadcast,
 } from "@whiskeysockets/baileys";
 import qrcode from "qrcode-terminal";
 import P from "pino";
@@ -160,6 +163,9 @@ async function connectToWhatsApp() {
     emitOwnEvents: false,
     markOnlineOnConnect: true,
     syncFullHistory: false,
+    shouldSyncHistoryMessage: () => false,
+    shouldIgnoreJid: (jid) => isJidBroadcast(jid) || isJidNewsletter(jid) || isJidStatusBroadcast(jid),
+    getMessage: async () => undefined,
   };
 
   sock = makeWASocket.default ? makeWASocket.default(socketOptions) : makeWASocket(socketOptions);
@@ -250,19 +256,6 @@ async function connectToWhatsApp() {
     }
   });
 
-  // Juga simpan pushName dari pesan yang masuk
-  sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
-    for (const m of msgs) {
-      if (m.pushName) {
-        const jid = m.key?.participant || m.key?.remoteJid;
-        if (jid && jid !== "status@broadcast") {
-          if (!sock.contacts[jid]) sock.contacts[jid] = {};
-          sock.contacts[jid].notify = m.pushName;
-        }
-      }
-    }
-  });
-
   // ====== Fitur Welcome ======
   sock.ev.on("group-participants.update", async (update) => {
     const { id, participants, action } = update;
@@ -312,91 +305,109 @@ async function connectToWhatsApp() {
     }
   });
 
-  sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify") return;
-    const msg = messages[0];
-    if (!msg.message) return;
+  sock.ev.on("messages.upsert", async ({ messages: msgs, type }) => {
+    if (type !== "notify" && type !== "append") return;
 
-    const from = msg.key.remoteJid;
-    const isMe = msg.key.fromMe;
-    const text = getTextFromMessage(msg).trim();
-    const isGroup = from.endsWith("@g.us");
+    for (const msg of msgs) {
+      if (!msg || !msg.message) continue;
 
-    // Database access
-    const senderJid = msg.key.participant || from;
-    const groupData = isGroup ? db.getGroup(from) : null;
-    const userData = db.getUser(senderJid);
+      const from = msg.key.remoteJid;
+      if (!from || isJidBroadcast(from) || isJidNewsletter(from) || isJidStatusBroadcast(from)) continue;
 
-    // ==========================================
-    // SISTEM VERIFIKASI KONTAK (vCard)
-    // ==========================================
-    const isContact = msg.message.contactMessage || msg.message.contactsArrayMessage;
-    if (isContact) {
-      let vcard = "";
-      if (msg.message.contactMessage) {
-        vcard = msg.message.contactMessage.vcard || "";
-      } else {
-        const contacts = msg.message.contactsArrayMessage.contacts || [];
-        vcard = contacts.map(c => c.vcard).join(" ");
+      // Update contacts pushName
+      if (msg.pushName) {
+        const jid = msg.key?.participant || from;
+        if (jid && !isJidBroadcast(jid)) {
+          if (!sock.contacts[jid]) sock.contacts[jid] = {};
+          sock.contacts[jid].notify = msg.pushName;
+        }
       }
-      
-      const vcardLower = vcard.toLowerCase();
-      // Validasi sederhana: vcard harus mengandung nama "abdbot"
-      if (vcardLower.includes("abdbot")) {
-        db.updateUser(senderJid, { isVerified: true });
-        await sock.sendMessage(from, { text: "✅ Verifikasi Sukses!\nTerima kasih telah menyimpan kontak bot. Anda sekarang dapat menggunakan semua perintah (command) bot ini." }, { quoted: msg });
-        return;
+
+      const isMe = msg.key.fromMe;
+      const text = getTextFromMessage(msg).trim();
+      if (!text) continue;
+
+      const isGroup = from.endsWith("@g.us");
+
+      // Database access
+      const senderJid = isGroup ? (msg.key.participant || from) : (isMe ? (sock.user?.id?.split(":")[0] + "@s.whatsapp.net" || from) : from);
+      const groupData = isGroup ? db.getGroup(from) : null;
+      const userData = db.getUser(senderJid);
+
+      // ==========================================
+      // SISTEM VERIFIKASI KONTAK (vCard)
+      // ==========================================
+      const isContact = msg.message.contactMessage || msg.message.contactsArrayMessage;
+      if (isContact) {
+        let vcard = "";
+        if (msg.message.contactMessage) {
+          vcard = msg.message.contactMessage.vcard || "";
+        } else {
+          const contacts = msg.message.contactsArrayMessage.contacts || [];
+          vcard = contacts.map(c => c.vcard).join(" ");
+        }
+        
+        const vcardLower = vcard.toLowerCase();
+        // Validasi sederhana: vcard harus mengandung nama "abdbot"
+        if (vcardLower.includes("abdbot")) {
+          db.updateUser(senderJid, { isVerified: true });
+          await sock.sendMessage(from, { text: "✅ Verifikasi Sukses!\nTerima kasih telah menyimpan kontak bot. Anda sekarang dapat menggunakan semua perintah (command) bot ini." }, { quoted: msg });
+          continue;
+        }
       }
-    }
-    // ==========================================
 
-    // Intercept game input (jawaban) sebelum mengecek prefix "."
-    const isGameHandled = await handleGameInput({ sock, msg, from, text, isGroup });
-    if (isGameHandled) return;
+      // Intercept game input (jawaban) sebelum mengecek prefix "."
+      const isGameHandled = await handleGameInput({ sock, msg, from, text, isGroup });
+      if (isGameHandled) continue;
 
-    if (text.toLowerCase() === "ping") {
-      await sock.sendMessage(from, { text: "pong 🏓" }, { quoted: msg });
-      return;
-    }
+      if (text.toLowerCase() === "ping") {
+        await sock.sendMessage(from, { text: "pong 🏓" }, { quoted: msg });
+        continue;
+      }
 
-    if (!text.startsWith(".")) return;
+      if (!text.startsWith(".")) continue;
 
-    // Cek apakah user sudah terverifikasi sebelum mengeksekusi command
-    if (!userData.isVerified) {
-      await sock.sendMessage(
-        from, 
-        { text: "⚠️ *AKSES DITOLAK*\n\nAnda belum terverifikasi! Silakan simpan nomor bot ini dengan nama *abdbot*, lalu kirim/bagikan kontak tersebut ke ruang chat ini (Pilih ikon klip/attachment -> Bagikan Kontak -> Pilih abdbot) untuk memvalidasi akun Anda dan mulai menggunakan bot." }, 
-        { quoted: msg }
-      );
-      return;
-    }
+      // Bypass verifikasi untuk Owner / self message
+      const ownerNumber = process.env.OWNER || "";
+      const isOwner = isMe || (ownerNumber && senderJid.includes(ownerNumber));
 
-    const [rawCmd, ...args] = text.slice(1).split(/\s+/);
-    const cmd = rawCmd.toLowerCase();
-    const handler = commands[cmd];
+      // Cek apakah user sudah terverifikasi sebelum mengeksekusi command
+      if (!userData.isVerified && !isOwner) {
+        await sock.sendMessage(
+          from, 
+          { text: "⚠️ *AKSES DITOLAK*\n\nAnda belum terverifikasi! Silakan simpan nomor bot ini dengan nama *abdbot*, lalu kirim/bagikan kontak tersebut ke ruang chat ini (Pilih ikon klip/attachment -> Bagikan Kontak -> Pilih abdbot) untuk memvalidasi akun Anda dan mulai menggunakan bot." }, 
+          { quoted: msg }
+        );
+        continue;
+      }
 
-    if (!handler) return;
+      const [rawCmd, ...args] = text.slice(1).split(/\s+/);
+      const cmd = rawCmd.toLowerCase();
+      const handler = commands[cmd];
 
-    const ctx = {
-      sock,
-      msg,
-      from,
-      cmd,
-      args,
-      text,
-      db,
-      groupData,
-      userData,
-      tmp,
-      getMediaBuffer: (m) => getMediaBuffer(sock, m || msg),
-      downloadContentFromMessage,
-    };
+      if (!handler) continue;
 
-    try {
-      await handler(ctx);
-    } catch (err) {
-      console.error(`❌ Error di .${cmd}:`, err);
-      await sock.sendMessage(from, { text: `Terjadi error di command .${cmd} 😅` }, { quoted: msg });
+      const ctx = {
+        sock,
+        msg,
+        from,
+        cmd,
+        args,
+        text,
+        db,
+        groupData,
+        userData,
+        tmp,
+        getMediaBuffer: (m) => getMediaBuffer(sock, m || msg),
+        downloadContentFromMessage,
+      };
+
+      try {
+        await handler(ctx);
+      } catch (err) {
+        console.error(`❌ Error di .${cmd}:`, err);
+        await sock.sendMessage(from, { text: `Terjadi error di command .${cmd} 😅` }, { quoted: msg });
+      }
     }
   });
 }
