@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node index.js"
   },
-  "author": "Arackerman05",
+  "author": "AbdurRouf05",
   "license": "ISC",
   "type": "module",
   "dependencies": {
