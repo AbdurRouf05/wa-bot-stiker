@@ -8,11 +8,27 @@ import { addExifToWebpBuffer } from "../utils/exif.js";
 
 const require = createRequire(import.meta.url);
 
-let createCanvas;
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let createCanvas, GlobalFonts;
 try {
-  ({ createCanvas } = require("@napi-rs/canvas"));
+  ({ createCanvas, GlobalFonts } = require("@napi-rs/canvas"));
+  if (GlobalFonts) {
+    const fontsDir = path.join(__dirname, "..", "assets", "fonts");
+    const regularFont = path.join(fontsDir, "Noto-Regular.ttf");
+    const boldFont = path.join(fontsDir, "Noto-Bold.ttf");
+    const emojiFont = path.join(fontsDir, "Noto-Emoji.ttf");
+
+    if (fs.existsSync(regularFont)) GlobalFonts.registerFromPath(regularFont, "NotoSans");
+    if (fs.existsSync(boldFont)) GlobalFonts.registerFromPath(boldFont, "NotoSansBold");
+    if (fs.existsSync(emojiFont)) GlobalFonts.registerFromPath(emojiFont, "NotoEmoji");
+  }
 } catch (e) {
   createCanvas = null;
+  GlobalFonts = null;
   console.log("[brat] Module '@napi-rs/canvas' tidak tersedia di environment ini.");
 }
 
