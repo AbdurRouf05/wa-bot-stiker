@@ -103,10 +103,13 @@ export default async ({ sock, msg, from, args, getMediaBuffer, downloadContentFr
   // ===== Tentukan Sumber Quote (Reply atau Langsung) =====
   let quotedContext = ext?.contextInfo?.quotedMessage ? ext.contextInfo : null;
 
+  const botNumber = (sock.user?.id || "").split(":")[0];
+
   if (quotedContext) {
     targetJid = quotedContext.participant || quotedContext.remoteJid || "";
+    const isBot = botNumber && targetJid.includes(botNumber);
     const contact = sock.contacts?.[targetJid];
-    displayName = contact?.notify || contact?.name || contact?.pushName || formatPhoneNumber(targetJid) || "User";
+    displayName = isBot ? "Abdbot" : (contact?.notify || contact?.name || contact?.pushName || formatPhoneNumber(targetJid) || "User");
 
     const qMsg = quotedContext.quotedMessage || {};
 
@@ -509,9 +512,15 @@ function createInitialAvatar(name, size = 140) {
 }
 
 function formatPhoneNumber(jid) {
-  const num = (jid || "").split("@")[0];
-  if (!num || num.length < 8) return num || "User";
-  return `+${num.slice(0, 2)} ${num.slice(2, 5)}-${num.slice(5, 9)}-${num.slice(9)}`;
+  const num = (jid || "").split("@")[0].replace(/\D/g, "");
+  if (!num || num.length < 8) return "User";
+  if (num.startsWith("62")) {
+    return `+62 ${num.slice(2, 5)}-${num.slice(5, 9)}-${num.slice(9)}`;
+  }
+  if (num.startsWith("1") && num.length === 11) {
+    return `+1 (${num.slice(1, 4)}) ${num.slice(4, 7)}-${num.slice(7)}`;
+  }
+  return `+${num.slice(0, 3)} ${num.slice(3, 7)}-${num.slice(7)}`;
 }
 
 function isColorLight(color) {

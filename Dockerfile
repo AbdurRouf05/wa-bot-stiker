@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y \
     libgif-dev \
     build-essential \
     g++ \
+    fonts-noto-color-emoji \
+    fonts-dejavu-core \
+    fonts-roboto \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
