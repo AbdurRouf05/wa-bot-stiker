@@ -1,14 +1,12 @@
-// commands/qc.js — Quote Creator WhatsApp Otentik & Premium
+// commands/qc.js — Quote Creator: bikin stiker balon chat WhatsApp dari pesan yang di-reply
 import { createRequire } from "module";
 import axios from "axios";
-import { addExifToWebpBuffer } from "../utils/exif.js";
-
-const require = createRequire(import.meta.url);
-
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { addExifToWebpBuffer } from "../utils/exif.js";
 
+const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -17,602 +15,388 @@ try {
   ({ createCanvas, loadImage, GlobalFonts } = require("@napi-rs/canvas"));
   if (GlobalFonts) {
     const fontsDir = path.join(__dirname, "..", "assets", "fonts");
-    const regularFont = path.join(fontsDir, "Noto-Regular.ttf");
-    const boldFont = path.join(fontsDir, "Noto-Bold.ttf");
-    const emojiFont = path.join(fontsDir, "Noto-Emoji.ttf");
-
-    if (fs.existsSync(regularFont)) GlobalFonts.registerFromPath(regularFont, "NotoSans");
-    if (fs.existsSync(boldFont)) GlobalFonts.registerFromPath(boldFont, "NotoSansBold");
-    if (fs.existsSync(emojiFont)) GlobalFonts.registerFromPath(emojiFont, "NotoEmoji");
+    for (const [file, family] of [
+      ["Noto-Regular.ttf", "NotoSans"],
+      ["Noto-Bold.ttf", "NotoSansBold"],
+      ["Noto-Emoji.ttf", "NotoEmoji"],
+    ]) {
+      const p = path.join(fontsDir, file);
+      if (fs.existsSync(p)) GlobalFonts.registerFromPath(p, family);
+    }
   }
 } catch (e) {
   createCanvas = null;
   loadImage = null;
-  GlobalFonts = null;
-  console.log("[qc] Module '@napi-rs/canvas' tidak tersedia di environment ini.");
 }
 
 let sharp;
-try {
-  sharp = require("sharp");
-} catch (e) {
-  sharp = null;
-  console.log("[qc] Module 'sharp' tidak tersedia di environment ini.");
-}
+try { sharp = require("sharp"); } catch { sharp = null; }
 
-// Palet warna nama kontak WhatsApp
+// ===== Konstanta Warna =====
 const NAME_COLORS = [
   "#53bdeb", "#e06055", "#d4813e", "#c1a835",
   "#6fba57", "#45bfa5", "#5bb5d4", "#a87bd4",
   "#e542a3", "#25d366", "#f27958", "#9c82e6"
 ];
 
-function getNameColor(name) {
-  let hash = 0;
-  for (let i = 0; i < (name || "").length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return NAME_COLORS[Math.abs(hash) % NAME_COLORS.length];
-}
-
-// Palet warna gradien inisial avatar
 const GRADIENT_PALETTES = [
-  ["#FF885E", "#FF516A"],
-  ["#FFCD6A", "#FFA85C"],
-  ["#E0A2F3", "#D669ED"],
-  ["#A0DE7E", "#54CB68"],
-  ["#53EDD6", "#28C9B7"],
-  ["#72D5FD", "#2A9EF1"],
-  ["#FFA8A8", "#FF719A"],
-  ["#845EC2", "#D65DB1"],
-  ["#4E8397", "#008B74"]
+  ["#FF885E", "#FF516A"], ["#FFCD6A", "#FFA85C"],
+  ["#E0A2F3", "#D669ED"], ["#A0DE7E", "#54CB68"],
+  ["#53EDD6", "#28C9B7"], ["#72D5FD", "#2A9EF1"],
+  ["#FFA8A8", "#FF719A"], ["#845EC2", "#D65DB1"],
 ];
 
-const PRESET_THEMES = {
-  dark: { bg: "#202c33", text: "#e9edef", time: "#8696a0", quoteBg: "rgba(0, 0, 0, 0.25)", quoteText: "#8696a0" },
-  light: { bg: "#ffffff", text: "#111b21", time: "#667781", quoteBg: "rgba(0, 0, 0, 0.06)", quoteText: "#667781" },
-  night: { bg: "#111b21", text: "#ffffff", time: "#8696a0", quoteBg: "rgba(255, 255, 255, 0.08)", quoteText: "#8696a0" },
-  blue: { bg: "#1e3a8a", text: "#ffffff", time: "#93c5fd", quoteBg: "rgba(0, 0, 0, 0.3)", quoteText: "#bfdbfe" },
-  purple: { bg: "#4c1d95", text: "#ffffff", time: "#c4b5fd", quoteBg: "rgba(0, 0, 0, 0.3)", quoteText: "#ddd6fe" },
-  pink: { bg: "#831843", text: "#ffffff", time: "#fbcfe8", quoteBg: "rgba(0, 0, 0, 0.3)", quoteText: "#fce7f3" },
-  green: { bg: "#064e3b", text: "#ffffff", time: "#a7f3d0", quoteBg: "rgba(0, 0, 0, 0.3)", quoteText: "#d1fae5" },
-  red: { bg: "#7f1d1d", text: "#ffffff", time: "#fecaca", quoteBg: "rgba(0, 0, 0, 0.3)", quoteText: "#fee2e2" }
+const THEMES = {
+  dark:   { bg: "#202c33", text: "#e9edef", time: "#8696a0", qBg: "rgba(0,0,0,0.25)", qTx: "#8696a0" },
+  light:  { bg: "#ffffff", text: "#111b21", time: "#667781", qBg: "rgba(0,0,0,0.06)", qTx: "#667781" },
+  night:  { bg: "#111b21", text: "#ffffff", time: "#8696a0", qBg: "rgba(255,255,255,0.08)", qTx: "#8696a0" },
+  blue:   { bg: "#1e3a8a", text: "#ffffff", time: "#93c5fd", qBg: "rgba(0,0,0,0.3)", qTx: "#bfdbfe" },
+  purple: { bg: "#4c1d95", text: "#ffffff", time: "#c4b5fd", qBg: "rgba(0,0,0,0.3)", qTx: "#ddd6fe" },
+  pink:   { bg: "#831843", text: "#ffffff", time: "#fbcfe8", qBg: "rgba(0,0,0,0.3)", qTx: "#fce7f3" },
+  green:  { bg: "#064e3b", text: "#ffffff", time: "#a7f3d0", qBg: "rgba(0,0,0,0.3)", qTx: "#d1fae5" },
+  red:    { bg: "#7f1d1d", text: "#ffffff", time: "#fecaca", qBg: "rgba(0,0,0,0.3)", qTx: "#fee2e2" },
 };
 
-const FONT_FAMILY = '"Segoe UI Emoji", "Noto Color Emoji", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+const FONT = '"NotoSans", "NotoSansBold", "NotoEmoji", "Segoe UI Emoji", "Noto Color Emoji", Arial, sans-serif';
 
-export default async ({ sock, msg, from, args, getMediaBuffer, downloadContentFromMessage }) => {
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < (s || "").length; i++) h = s.charCodeAt(i) + ((h << 5) - h);
+  return Math.abs(h);
+}
+function nameColor(n) { return NAME_COLORS[hashStr(n) % NAME_COLORS.length]; }
+
+function isLight(hex) {
+  let h = (hex || "").replace("#", "");
+  if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  const r = parseInt(h.substr(0,2),16)||0, g = parseInt(h.substr(2,2),16)||0, b = parseInt(h.substr(4,2),16)||0;
+  return (r*299+g*587+b*114)/1000 > 150;
+}
+
+function fmtPhone(jid) {
+  const n = (jid||"").split("@")[0].replace(/\D/g,"");
+  if (!n || n.length < 8) return "User";
+  if (n.startsWith("62")) return `+62 ${n.slice(2,5)}-${n.slice(5,9)}-${n.slice(9)}`;
+  return `+${n.slice(0,3)} ${n.slice(3,7)}-${n.slice(7)}`;
+}
+
+// ===== Cari contextInfo dari message apapun =====
+function getContextInfo(msg) {
+  const m = msg.message || {};
+  // extendedTextMessage (reply teks)
+  if (m.extendedTextMessage?.contextInfo?.quotedMessage) return m.extendedTextMessage.contextInfo;
+  // imageMessage (reply gambar dengan caption)
+  if (m.imageMessage?.contextInfo?.quotedMessage) return m.imageMessage.contextInfo;
+  // videoMessage
+  if (m.videoMessage?.contextInfo?.quotedMessage) return m.videoMessage.contextInfo;
+  // stickerMessage (reply stiker)
+  if (m.stickerMessage?.contextInfo?.quotedMessage) return m.stickerMessage.contextInfo;
+  // buttonsResponseMessage, listResponseMessage, dll
+  for (const key of Object.keys(m)) {
+    if (m[key]?.contextInfo?.quotedMessage) return m[key].contextInfo;
+  }
+  return null;
+}
+
+// ===== Handler Utama =====
+export default async ({ sock, msg, from, args, downloadContentFromMessage }) => {
   if (!createCanvas || !sharp) {
-    await sock.sendMessage(from, {
-      text: "Fitur *.qc* memerlukan module *@napi-rs/canvas* dan *sharp*.",
-    }, { quoted: msg });
-    return;
+    return sock.sendMessage(from, { text: "⚠️ Fitur .qc memerlukan @napi-rs/canvas dan sharp." }, { quoted: msg });
   }
 
-  const m = msg.message || {};
-  const ext = m.extendedTextMessage;
+  // --- 1. Parse tema warna dari args ---
+  let theme = THEMES.dark;
+  let textArgs = [...args];
+  if (textArgs.length > 0) {
+    const first = textArgs[0].toLowerCase();
+    if (THEMES[first]) {
+      theme = THEMES[first];
+      textArgs = textArgs.slice(1);
+    } else if (/^#[0-9a-f]{3,6}$/i.test(first)) {
+      const light = isLight(first);
+      theme = { bg: first, text: light?"#111b21":"#fff", time: light?"#667781":"#8696a0", qBg: light?"rgba(0,0,0,0.06)":"rgba(255,255,255,0.12)", qTx: light?"#667781":"#8696a0" };
+      textArgs = textArgs.slice(1);
+    }
+  }
+  let userText = textArgs.join(" ").trim();
+
+  // --- 2. Deteksi reply / contextInfo ---
+  const ci = getContextInfo(msg);
+  const botNum = (sock.user?.id || "").split(":")[0];
 
   let displayName = "";
   let targetJid = "";
-  let text = args.join(" ").trim();
   let quotedBox = null;
-  let mediaImageBuffer = null;
 
-  // Cek apakah ada opsi warna di awal argumen
-  let theme = PRESET_THEMES.dark; // Default: Dark Mode WhatsApp
-  if (args.length > 0) {
-    const firstArg = args[0].toLowerCase();
-    if (PRESET_THEMES[firstArg]) {
-      theme = PRESET_THEMES[firstArg];
-      text = args.slice(1).join(" ").trim();
-    } else if (/^#[0-9a-f]{6}$/i.test(firstArg) || /^#[0-9a-f]{3}$/i.test(firstArg)) {
-      const isLight = isColorLight(firstArg);
-      theme = {
-        bg: firstArg,
-        text: isLight ? "#111b21" : "#ffffff",
-        time: isLight ? "#667781" : "#8696a0",
-        quoteBg: isLight ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.12)",
-        quoteText: isLight ? "#667781" : "#8696a0"
-      };
-      text = args.slice(1).join(" ").trim();
-    }
-  }
-
-  // ===== Tentukan Sumber Quote (Reply atau Langsung) =====
-  let quotedContext = ext?.contextInfo?.quotedMessage ? ext.contextInfo : null;
-
-  const botNumber = (sock.user?.id || "").split(":")[0];
-
-  if (quotedContext) {
-    targetJid = quotedContext.participant || quotedContext.remoteJid || "";
-    const isBot = botNumber && targetJid.includes(botNumber);
+  if (ci) {
+    // Ada reply — ambil info pengirim pesan yang di-reply
+    targetJid = ci.participant || ci.remoteJid || "";
+    const isBotMsg = botNum && targetJid.includes(botNum);
     const contact = sock.contacts?.[targetJid];
-    displayName = isBot ? "Abdbot" : (contact?.notify || contact?.name || contact?.pushName || formatPhoneNumber(targetJid) || "User");
+    displayName = isBotMsg ? "Abdbot" : (contact?.notify || contact?.name || contact?.pushName || fmtPhone(targetJid));
 
-    const qMsg = quotedContext.quotedMessage || {};
-
-    // Jika pesan yang di-reply adalah media gambar
-    if (qMsg.imageMessage && downloadContentFromMessage) {
-      try {
-        const stream = await downloadContentFromMessage(qMsg.imageMessage, "image");
-        let buf = Buffer.from([]);
-        for await (const chunk of stream) buf = Buffer.concat([buf, chunk]);
-        if (buf.length > 0) mediaImageBuffer = buf;
-      } catch (e) {}
-    }
-
-    // Ambil teks dari pesan yang di-reply jika user tidak mengetikkan teks sendiri
+    const qMsg = ci.quotedMessage || {};
     const quotedText =
       qMsg.conversation ||
       qMsg.extendedTextMessage?.text ||
       qMsg.imageMessage?.caption ||
-      qMsg.videoMessage?.caption ||
-      "";
+      qMsg.videoMessage?.caption || "";
 
-    if (!text) {
-      text = quotedText;
-    } else if (quotedText && text !== quotedText) {
-      // Jika user mengetik teks baru sambil me-reply, jadikan quotedText sebagai kotak balasan di atas
+    if (!userText) {
+      // User cuma ketik .qc tanpa teks -> ambil teks pesan yang di-reply
+      userText = quotedText;
+    } else if (quotedText) {
+      // User ketik .qc [teks baru] sambil reply -> tampilkan reply box di atas
       quotedBox = {
         name: displayName,
-        text: quotedText.slice(0, 80) + (quotedText.length > 80 ? "..." : ""),
-        color: getNameColor(displayName)
+        text: quotedText.length > 80 ? quotedText.slice(0, 77) + "..." : quotedText,
+        color: nameColor(displayName)
       };
-      // Dan nama pengirim quote menjadi nama user yang memanggil command
+      // Ganti pengirim ke user yang memanggil command
       const myJid = msg.key?.participant || msg.key?.remoteJid || "";
       const myContact = sock.contacts?.[myJid];
-      displayName = msg.pushName || myContact?.notify || formatPhoneNumber(myJid) || "User";
+      displayName = msg.pushName || myContact?.notify || fmtPhone(myJid);
       targetJid = myJid;
     }
-
-    // Jika pesan yang di-reply memiliki nested quote
-    if (!quotedBox && qMsg.extendedTextMessage?.contextInfo?.quotedMessage) {
-      const nestedContext = qMsg.extendedTextMessage.contextInfo;
-      const nestedJid = nestedContext.participant || nestedContext.remoteJid || "";
-      const nestedContact = sock.contacts?.[nestedJid];
-      const nestedName = nestedContact?.notify || nestedContact?.name || formatPhoneNumber(nestedJid) || "User";
-      const nestedText =
-        nestedContext.quotedMessage?.conversation ||
-        nestedContext.quotedMessage?.extendedTextMessage?.text ||
-        nestedContext.quotedMessage?.imageMessage?.caption ||
-        "";
-      if (nestedText) {
-        quotedBox = {
-          name: nestedName,
-          text: nestedText.slice(0, 80) + (nestedText.length > 80 ? "..." : ""),
-          color: getNameColor(nestedName)
-        };
-      }
-    }
   } else {
-    // User mengetik langsung `.qc teks`
+    // Tidak reply — user langsung ketik .qc [teks]
     targetJid = msg.key?.participant || msg.key?.remoteJid || "";
     const contact = sock.contacts?.[targetJid];
-    displayName = msg.pushName || contact?.notify || formatPhoneNumber(targetJid) || "User";
+    displayName = msg.pushName || contact?.notify || fmtPhone(targetJid);
   }
 
-  if (!text && !mediaImageBuffer) {
-    await sock.sendMessage(from, {
-      text: "💬 *Format Penggunaan QC (Quote Creator)*:\n\n" +
-            "• Ketik langsung: `.qc [teks]`\n" +
-            "• Reply pesan: Balas pesan lalu ketik `.qc`\n" +
-            "• Tema warna: `.qc light [teks]`, `.qc dark [teks]`, `.qc #1e3a8a [teks]`, `.qc purple [teks]`\n\n" +
-            "_Contoh:_ `.qc Selamat malam semuanya!`"
+  if (!userText) {
+    return sock.sendMessage(from, {
+      text: "💬 *Quote Creator (QC)*\n\n" +
+        "• Reply pesan seseorang lalu ketik `.qc`\n" +
+        "• Atau ketik langsung: `.qc [teks]`\n" +
+        "• Tema: `.qc dark`, `.qc light`, `.qc purple`, `.qc #hex`\n\n" +
+        "_Contoh: reply pesan teman → ketik .qc_"
     }, { quoted: msg });
-    return;
   }
 
   try {
-    // ===== 1. Ambil Foto Profil / Buat Avatar Inisial =====
+    // --- 3. Ambil avatar (foto profil / fallback inisial) ---
     let avatarImg = null;
     try {
-      if (targetJid && sock.profilePictureUrl) {
+      if (targetJid) {
         const ppUrl = await sock.profilePictureUrl(targetJid, "image");
         if (ppUrl) {
           const res = await axios.get(ppUrl, { responseType: "arraybuffer", timeout: 4000 });
-          if (res.data) avatarImg = await loadImage(Buffer.from(res.data));
+          avatarImg = await loadImage(Buffer.from(res.data));
         }
       }
-    } catch (e) {
-      // Profil privat / tidak ada PP -> fallback ke avatar inisial
-    }
+    } catch {}
+    if (!avatarImg) avatarImg = await loadImage(makeInitialAvatar(displayName));
 
-    if (!avatarImg) {
-      const avatarBuf = createInitialAvatar(displayName, 140);
-      avatarImg = await loadImage(avatarBuf);
-    }
+    // --- 4. Ukur dimensi bubble ---
+    const AV = 64, AV_PAD = 14, PAD = 24, BPH = 20, BPV = 16, TAIL = 12, R = 18, MAX_W = 480;
+    const NAME_FS = 22, TEXT_FS = 26, LH = Math.round(TEXT_FS * 1.4), TIME_FS = 17;
 
-    // ===== 2. Setup Pengukuran Canvas =====
-    const AVATAR_SIZE = 64;
-    const AVATAR_PAD = 14;
-    const CANVAS_PAD = 24;
-    const BUBBLE_PAD_H = 20;
-    const BUBBLE_PAD_V = 16;
-    const TAIL_W = 12;
-    const RADIUS = 18;
-    const MAX_TEXT_W = 480;
-
-    const NAME_FONT_SIZE = 22;
-    const TEXT_FONT_SIZE = 26;
-    const LINE_HEIGHT = Math.round(TEXT_FONT_SIZE * 1.4);
-    const TIME_FONT_SIZE = 17;
-
-    const nameColor = getNameColor(displayName);
-
-    // Hitung waktu saat ini (HH:MM)
+    const nc = nameColor(displayName);
     const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const timeStr = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
 
-    // Measure temporary canvas
-    const tempCanvas = createCanvas(1, 1);
-    const tctx = tempCanvas.getContext("2d");
+    const mc = createCanvas(1, 1);
+    const mctx = mc.getContext("2d");
 
-    tctx.font = `bold ${NAME_FONT_SIZE}px ${FONT_FAMILY}`;
-    const nameWidth = tctx.measureText(displayName).width;
+    mctx.font = `bold ${NAME_FS}px ${FONT}`;
+    const nameW = mctx.measureText(displayName).width;
 
-    // Word wrap & token formatting
-    tctx.font = `${TEXT_FONT_SIZE}px ${FONT_FAMILY}`;
-    const formattedLines = wrapFormattedText(tctx, text, MAX_TEXT_W, TEXT_FONT_SIZE);
+    mctx.font = `${TEXT_FS}px ${FONT}`;
+    const lines = wrapText(mctx, userText, MAX_W, TEXT_FS);
+    let contentW = Math.max(nameW, 120);
+    for (const l of lines) if (l.w > contentW) contentW = l.w;
 
-    let maxContentWidth = Math.max(nameWidth, 120);
-    for (const line of formattedLines) {
-      if (line.width > maxContentWidth) maxContentWidth = line.width;
-    }
-
-    // Hitung ukuran Quoted Box jika ada
-    let quotedBoxHeight = 0;
-    let quotedBoxWidth = 0;
+    let qbH = 0;
     if (quotedBox) {
-      tctx.font = `bold 18px ${FONT_FAMILY}`;
-      const qnWidth = tctx.measureText(quotedBox.name).width;
-      tctx.font = `18px ${FONT_FAMILY}`;
-      const qtWidth = tctx.measureText(quotedBox.text).width;
-      quotedBoxWidth = Math.max(qnWidth, qtWidth) + 24;
-      if (quotedBoxWidth > MAX_TEXT_W) quotedBoxWidth = MAX_TEXT_W;
-      quotedBoxHeight = 48;
-      if (quotedBoxWidth > maxContentWidth) maxContentWidth = quotedBoxWidth;
+      mctx.font = `bold 18px ${FONT}`;
+      const qnW = mctx.measureText(quotedBox.name).width;
+      mctx.font = `18px ${FONT}`;
+      const qtW = mctx.measureText(quotedBox.text).width;
+      const qw = Math.min(Math.max(qnW, qtW) + 24, MAX_W);
+      if (qw > contentW) contentW = qw;
+      qbH = 48;
     }
 
-    // Hitung ukuran Media Image jika ada
-    let mediaImg = null;
-    let mediaW = 0;
-    let mediaH = 0;
-    if (mediaImageBuffer) {
-      try {
-        mediaImg = await loadImage(mediaImageBuffer);
-        const maxMediaDim = 320;
-        const aspect = mediaImg.width / mediaImg.height;
-        if (aspect >= 1) {
-          mediaW = Math.min(mediaImg.width, maxMediaDim);
-          mediaH = Math.round(mediaW / aspect);
-        } else {
-          mediaH = Math.min(mediaImg.height, maxMediaDim);
-          mediaW = Math.round(mediaH * aspect);
-        }
-        if (mediaW > maxContentWidth) maxContentWidth = mediaW;
-      } catch (e) {}
-    }
+    mctx.font = `${TIME_FS}px ${FONT}`;
+    const timeW = mctx.measureText(`${timeStr}  ✓✓`).width + 10;
 
-    tctx.font = `${TIME_FONT_SIZE}px ${FONT_FAMILY}`;
-    const timeWidth = tctx.measureText(`${timeStr}  ✓✓`).width + 10;
+    const bubW = Math.max(contentW, timeW + 30) + BPH * 2;
+    let innerH = NAME_FS + 8 + (qbH ? qbH + 10 : 0) + lines.length * LH + 18;
+    const bubH = innerH + BPV * 2;
 
-    // Dimensi Bubble
-    const bubbleWidth = Math.max(maxContentWidth, timeWidth + 30) + BUBBLE_PAD_H * 2;
-    let innerHeight = NAME_FONT_SIZE + 8;
-    if (quotedBox) innerHeight += quotedBoxHeight + 10;
-    if (mediaImg) innerHeight += mediaH + 12;
-    innerHeight += formattedLines.length * LINE_HEIGHT + 18; // +18 untuk baris timestamp
+    const cW = PAD*2 + AV + AV_PAD + TAIL + bubW;
+    const cH = PAD*2 + Math.max(bubH, AV);
 
-    const bubbleHeight = innerHeight + BUBBLE_PAD_V * 2;
-
-    const totalCanvasW = CANVAS_PAD * 2 + AVATAR_SIZE + AVATAR_PAD + TAIL_W + bubbleWidth;
-    const totalCanvasH = CANVAS_PAD * 2 + Math.max(bubbleHeight, AVATAR_SIZE);
-
-    // ===== 3. Rendering Canvas Utama =====
-    const canvas = createCanvas(totalCanvasW, totalCanvasH);
+    // --- 5. Render canvas ---
+    const canvas = createCanvas(cW, cH);
     const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, totalCanvasW, totalCanvasH);
+    ctx.clearRect(0, 0, cW, cH);
 
-    const avX = CANVAS_PAD;
-    const avY = CANVAS_PAD;
-    const bx = CANVAS_PAD + AVATAR_SIZE + AVATAR_PAD + TAIL_W;
-    const by = CANVAS_PAD;
+    const ax = PAD, ay = PAD;
+    const bx = PAD + AV + AV_PAD + TAIL, by = PAD;
 
-    // --- Render Avatar Bulat ---
+    // Avatar bulat
     ctx.save();
     ctx.beginPath();
-    ctx.arc(avX + AVATAR_SIZE / 2, avY + AVATAR_SIZE / 2, AVATAR_SIZE / 2, 0, Math.PI * 2);
-    ctx.closePath();
+    ctx.arc(ax + AV/2, ay + AV/2, AV/2, 0, Math.PI*2);
     ctx.clip();
-    ctx.drawImage(avatarImg, avX, avY, AVATAR_SIZE, AVATAR_SIZE);
+    ctx.drawImage(avatarImg, ax, ay, AV, AV);
     ctx.restore();
 
-    // --- Render Shadow Bubble ---
+    // Bayangan bubble
     ctx.save();
-    ctx.shadowColor = "rgba(0, 0, 0, 0.22)";
+    ctx.shadowColor = "rgba(0,0,0,0.22)";
     ctx.shadowBlur = 14;
-    ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 4;
-
     ctx.fillStyle = theme.bg;
     ctx.beginPath();
-    ctx.roundRect(bx, by, bubbleWidth, bubbleHeight, RADIUS);
+    ctx.roundRect(bx, by, bubW, bubH, R);
     ctx.fill();
     ctx.restore();
 
-    // --- Render Ekor Bubble (Tail menunjuk ke avatar) ---
+    // Ekor bubble
     ctx.fillStyle = theme.bg;
     ctx.beginPath();
-    ctx.moveTo(bx, by + 10);
-    ctx.lineTo(bx - TAIL_W, by + 4);
-    ctx.lineTo(bx, by + 26);
+    ctx.moveTo(bx, by+10);
+    ctx.lineTo(bx-TAIL, by+4);
+    ctx.lineTo(bx, by+26);
     ctx.closePath();
     ctx.fill();
+    ctx.fillRect(bx, by, R, 26);
 
-    // Menghaluskan sambungan ekor dan body bubble
-    ctx.fillRect(bx, by, RADIUS, 26);
-
-    // --- Render Nama Pengirim ---
-    let currentY = by + BUBBLE_PAD_V;
-    ctx.fillStyle = nameColor;
-    ctx.font = `bold ${NAME_FONT_SIZE}px ${FONT_FAMILY}`;
+    // Nama pengirim
+    let cy = by + BPV;
+    ctx.fillStyle = nc;
+    ctx.font = `bold ${NAME_FS}px ${FONT}`;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText(displayName, bx + BUBBLE_PAD_H, currentY);
+    ctx.fillText(displayName, bx + BPH, cy);
+    cy += NAME_FS + 8;
 
-    currentY += NAME_FONT_SIZE + 8;
-
-    // --- Render Quoted / Reply Box jika ada ---
+    // Quoted reply box
     if (quotedBox) {
-      const qx = bx + BUBBLE_PAD_H;
-      const qy = currentY;
-      const qw = Math.max(quotedBoxWidth, maxContentWidth);
-      const qh = quotedBoxHeight;
-
-      // Background quoted box
-      ctx.fillStyle = theme.quoteBg;
-      ctx.beginPath();
-      ctx.roundRect(qx, qy, qw, qh, 8);
-      ctx.fill();
-
-      // Garis aksen kiri
+      const qx = bx + BPH;
+      const qw = Math.max(contentW, 100);
+      ctx.fillStyle = theme.qBg;
+      ctx.beginPath(); ctx.roundRect(qx, cy, qw, qbH, 8); ctx.fill();
       ctx.fillStyle = quotedBox.color;
-      ctx.beginPath();
-      ctx.roundRect(qx, qy, 5, qh, [8, 0, 0, 8]);
-      ctx.fill();
-
-      // Nama di quoted box
+      ctx.beginPath(); ctx.roundRect(qx, cy, 5, qbH, [8,0,0,8]); ctx.fill();
       ctx.fillStyle = quotedBox.color;
-      ctx.font = `bold 16px ${FONT_FAMILY}`;
-      ctx.fillText(quotedBox.name, qx + 14, qy + 6);
-
-      // Teks di quoted box
-      ctx.fillStyle = theme.quoteText;
-      ctx.font = `15px ${FONT_FAMILY}`;
-      ctx.fillText(quotedBox.text, qx + 14, qy + 26);
-
-      currentY += qh + 10;
+      ctx.font = `bold 16px ${FONT}`;
+      ctx.fillText(quotedBox.name, qx+14, cy+6);
+      ctx.fillStyle = theme.qTx;
+      ctx.font = `15px ${FONT}`;
+      ctx.fillText(quotedBox.text, qx+14, cy+26);
+      cy += qbH + 10;
     }
 
-    // --- Render Media Image jika ada ---
-    if (mediaImg) {
-      const mx = bx + BUBBLE_PAD_H;
-      const my = currentY;
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.roundRect(mx, my, mediaW, mediaH, 10);
-      ctx.clip();
-      ctx.drawImage(mediaImg, mx, my, mediaW, mediaH);
-      ctx.restore();
-
-      currentY += mediaH + 10;
-    }
-
-    // --- Render Teks Utama dengan Format Kaya (Bold, Italic, Strikethrough, Monospace) ---
-    for (const line of formattedLines) {
-      let curX = bx + BUBBLE_PAD_H;
-      for (const token of line.tokens) {
+    // Teks utama (dengan formatting)
+    for (const line of lines) {
+      let lx = bx + BPH;
+      for (const tk of line.tokens) {
         ctx.save();
-        let fontStyle = "";
-        let fontFamily = FONT_FAMILY;
-        let textColor = theme.text;
-
-        if (token.bold) fontStyle += "bold ";
-        if (token.italic) fontStyle += "italic ";
-        if (token.mono) {
-          fontFamily = '"Courier New", Courier, monospace';
-          textColor = isColorLight(theme.bg) ? "#0d9488" : "#2dd4bf";
-        }
-        if (token.mention) {
-          textColor = "#53bdeb"; // Aksen biru mention WhatsApp
-        }
-
-        ctx.font = `${fontStyle}${TEXT_FONT_SIZE}px ${fontFamily}`;
-        ctx.fillStyle = textColor;
+        let fs = "", ff = FONT, tc = theme.text;
+        if (tk.bold) fs += "bold ";
+        if (tk.italic) fs += "italic ";
+        if (tk.mono) { ff = '"Courier New", monospace'; tc = isLight(theme.bg) ? "#0d9488" : "#2dd4bf"; }
+        if (tk.mention) tc = "#53bdeb";
+        ctx.font = `${fs}${TEXT_FS}px ${ff}`;
+        ctx.fillStyle = tc;
         ctx.textBaseline = "top";
-        ctx.fillText(token.text, curX, currentY);
-
-        const tokenW = ctx.measureText(token.text).width;
-
-        // Render Strikethrough jika aktif (~teks~)
-        if (token.strike) {
-          ctx.strokeStyle = textColor;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(curX, currentY + TEXT_FONT_SIZE / 2 + 1);
-          ctx.lineTo(curX + tokenW, currentY + TEXT_FONT_SIZE / 2 + 1);
-          ctx.stroke();
+        ctx.fillText(tk.text, lx, cy);
+        const tw = ctx.measureText(tk.text).width;
+        if (tk.strike) {
+          ctx.strokeStyle = tc; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(lx, cy+TEXT_FS/2+1); ctx.lineTo(lx+tw, cy+TEXT_FS/2+1); ctx.stroke();
         }
-
         ctx.restore();
-        curX += tokenW;
+        lx += tw;
       }
-      currentY += LINE_HEIGHT;
+      cy += LH;
     }
 
-    // --- Render Timestamp & Centang Biru (✓✓) ---
-    const timeX = bx + bubbleWidth - BUBBLE_PAD_H;
-    const timeY = by + bubbleHeight - BUBBLE_PAD_V - TIME_FONT_SIZE + 2;
-
-    ctx.textAlign = "right";
-    ctx.textBaseline = "top";
-
-    // Double Blue Checkmarks
-    ctx.font = `bold ${TIME_FONT_SIZE}px ${FONT_FAMILY}`;
-    ctx.fillStyle = "#53bdeb"; // Cyan WhatsApp checkmarks
-    ctx.fillText("✓✓", timeX, timeY);
-
-    const checkmarkW = ctx.measureText("✓✓").width + 5;
-
-    // Jam (misal 21:45)
-    ctx.font = `${TIME_FONT_SIZE - 2}px ${FONT_FAMILY}`;
+    // Timestamp + centang biru
+    const tx = bx + bubW - BPH;
+    const ty = by + bubH - BPV - TIME_FS + 2;
+    ctx.textAlign = "right"; ctx.textBaseline = "top";
+    ctx.font = `bold ${TIME_FS}px ${FONT}`;
+    ctx.fillStyle = "#53bdeb";
+    ctx.fillText("✓✓", tx, ty);
+    const ckW = ctx.measureText("✓✓").width + 5;
+    ctx.font = `${TIME_FS-2}px ${FONT}`;
     ctx.fillStyle = theme.time;
-    ctx.fillText(timeStr, timeX - checkmarkW, timeY);
+    ctx.fillText(timeStr, tx - ckW, ty);
 
-    // ===== 4. Export ke WebP Sticker dengan EXIF Metadata =====
-    const pngBuffer = canvas.toBuffer("image/png");
-    const rawWebp = await sharp(pngBuffer)
-      .resize(512, 512, {
-        fit: "contain",
-        background: { r: 0, g: 0, b: 0, alpha: 0 }
-      })
+    // --- 6. Export ke stiker WebP ---
+    const png = canvas.toBuffer("image/png");
+    const webp = await sharp(png)
+      .resize(512, 512, { fit: "contain", background: { r:0, g:0, b:0, alpha:0 } })
       .webp({ quality: 95 })
       .toBuffer();
-
-    const stickerBuffer = await addExifToWebpBuffer(rawWebp);
-    await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: msg });
+    const sticker = await addExifToWebpBuffer(webp);
+    await sock.sendMessage(from, { sticker }, { quoted: msg });
   } catch (err) {
     console.error("❌ QC Error:", err);
-    await sock.sendMessage(from, { text: `❌ Gagal membuat quote sticker: ${err.message}` }, { quoted: msg });
+    await sock.sendMessage(from, { text: `❌ QC gagal: ${err.message}` }, { quoted: msg });
   }
 };
 
-// ==========================================
-//  HELPER FUNCTIONS
-// ==========================================
+// ===== Helper Functions =====
 
-function createInitialAvatar(name, size = 140) {
+function makeInitialAvatar(name, size = 140) {
   const canvas = createCanvas(size, size);
   const ctx = canvas.getContext("2d");
-
-  const cleanName = (name || "User").trim().toUpperCase();
-  const words = cleanName.split(/\s+/).filter(Boolean);
-  let initials = "U";
-  if (words.length >= 2) {
-    initials = words[0][0] + words[1][0];
-  } else if (words.length === 1 && words[0].length >= 1) {
-    initials = words[0].slice(0, 2);
-  }
-
-  let hash = 0;
-  for (let i = 0; i < cleanName.length; i++) {
-    hash = cleanName.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const colors = GRADIENT_PALETTES[Math.abs(hash) % GRADIENT_PALETTES.length];
-
-  const grad = ctx.createLinearGradient(0, 0, size, size);
-  grad.addColorStop(0, colors[0]);
-  grad.addColorStop(1, colors[1]);
-
-  ctx.beginPath();
-  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  ctx.font = `bold ${Math.round(size * 0.44)}px ${FONT_FAMILY}`;
-  ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(initials, size / 2, size / 2 + 2);
-
+  const clean = (name || "User").trim().toUpperCase();
+  const words = clean.split(/\s+/).filter(Boolean);
+  const initials = words.length >= 2 ? words[0][0] + words[1][0] : clean.slice(0, 2) || "U";
+  const colors = GRADIENT_PALETTES[hashStr(clean) % GRADIENT_PALETTES.length];
+  const g = ctx.createLinearGradient(0, 0, size, size);
+  g.addColorStop(0, colors[0]); g.addColorStop(1, colors[1]);
+  ctx.beginPath(); ctx.arc(size/2, size/2, size/2, 0, Math.PI*2); ctx.fillStyle = g; ctx.fill();
+  ctx.font = `bold ${Math.round(size*0.44)}px ${FONT}`;
+  ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(initials, size/2, size/2+2);
   return canvas.toBuffer("image/png");
 }
 
-function formatPhoneNumber(jid) {
-  const num = (jid || "").split("@")[0].replace(/\D/g, "");
-  if (!num || num.length < 8) return "User";
-  if (num.startsWith("62")) {
-    return `+62 ${num.slice(2, 5)}-${num.slice(5, 9)}-${num.slice(9)}`;
-  }
-  if (num.startsWith("1") && num.length === 11) {
-    return `+1 (${num.slice(1, 4)}) ${num.slice(4, 7)}-${num.slice(7)}`;
-  }
-  return `+${num.slice(0, 3)} ${num.slice(3, 7)}-${num.slice(7)}`;
+function tokenize(text) {
+  const rx = /(```[\s\S]*?```|\*[^*]+?\*|_[^_]+?_|~[^~]+?~|@\d{7,16}|[^\s*`_~@]+|\s+)/g;
+  const matches = text.match(rx) || [text];
+  return matches.map(m => {
+    if (m.startsWith("```") && m.endsWith("```") && m.length >= 6) return { text: m.slice(3,-3), mono: true };
+    if (m.startsWith("*") && m.endsWith("*") && m.length >= 2) return { text: m.slice(1,-1), bold: true };
+    if (m.startsWith("_") && m.endsWith("_") && m.length >= 2) return { text: m.slice(1,-1), italic: true };
+    if (m.startsWith("~") && m.endsWith("~") && m.length >= 2) return { text: m.slice(1,-1), strike: true };
+    if (/^@\d+$/.test(m)) return { text: m, mention: true };
+    return { text: m };
+  });
 }
 
-function isColorLight(color) {
-  let hex = color.replace("#", "");
-  if (hex.length === 3) hex = hex.split("").map(c => c + c).join("");
-  const r = parseInt(hex.substr(0, 2), 16) || 0;
-  const g = parseInt(hex.substr(2, 2), 16) || 0;
-  const b = parseInt(hex.substr(4, 2), 16) || 0;
-  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-  return brightness > 150;
-}
-
-/**
- * Tokenize teks WhatsApp formatting: *bold*, _italic_, ~strike~, ```mono```, @mention
- */
-function tokenizeFormattedText(text) {
-  const regex = /(```[\s\S]*?```|\*[^*]+?\*|_[^_]+?_|~[^~]+?~|@\d{7,16}|[^\s*`_~@]+|\s+)/g;
-  const matches = text.match(regex) || [text];
-  const tokens = [];
-
-  for (const m of matches) {
-    if (m.startsWith("```") && m.endsWith("```") && m.length >= 6) {
-      tokens.push({ text: m.slice(3, -3), mono: true });
-    } else if (m.startsWith("*") && m.endsWith("*") && m.length >= 2) {
-      tokens.push({ text: m.slice(1, -1), bold: true });
-    } else if (m.startsWith("_") && m.endsWith("_") && m.length >= 2) {
-      tokens.push({ text: m.slice(1, -1), italic: true });
-    } else if (m.startsWith("~") && m.endsWith("~") && m.length >= 2) {
-      tokens.push({ text: m.slice(1, -1), strike: true });
-    } else if (m.startsWith("@") && /^@\d+$/.test(m)) {
-      tokens.push({ text: m, mention: true });
-    } else {
-      tokens.push({ text: m });
-    }
-  }
-  return tokens;
-}
-
-/**
- * Word wrap teks berformat
- */
-function wrapFormattedText(ctx, rawText, maxWidth, fontSize) {
-  const paragraphs = (rawText || "").split("\n");
-  const lines = [];
-
-  for (const p of paragraphs) {
-    const tokens = tokenizeFormattedText(p);
-    let currentLineTokens = [];
-    let currentLineWidth = 0;
-
-    for (const token of tokens) {
+function wrapText(ctx, raw, maxW, fontSize) {
+  const paras = (raw || "").split("\n");
+  const result = [];
+  for (const p of paras) {
+    const tokens = tokenize(p);
+    let curTokens = [], curW = 0;
+    for (const tk of tokens) {
       ctx.save();
-      let fontStyle = "";
-      if (token.bold) fontStyle += "bold ";
-      if (token.italic) fontStyle += "italic ";
-      const fontFamily = token.mono ? '"Courier New", Courier, monospace' : FONT_FAMILY;
-      ctx.font = `${fontStyle}${fontSize}px ${fontFamily}`;
-      const tokenWidth = ctx.measureText(token.text).width;
+      let fs = "";
+      if (tk.bold) fs += "bold ";
+      if (tk.italic) fs += "italic ";
+      const ff = tk.mono ? '"Courier New", monospace' : FONT;
+      ctx.font = `${fs}${fontSize}px ${ff}`;
+      const tw = ctx.measureText(tk.text).width;
       ctx.restore();
-
-      if (currentLineWidth + tokenWidth > maxWidth && currentLineTokens.length > 0 && token.text.trim() !== "") {
-        lines.push({ tokens: currentLineTokens, width: currentLineWidth });
-        currentLineTokens = [token];
-        currentLineWidth = tokenWidth;
+      if (curW + tw > maxW && curTokens.length > 0 && tk.text.trim()) {
+        result.push({ tokens: curTokens, w: curW });
+        curTokens = [tk]; curW = tw;
       } else {
-        currentLineTokens.push(token);
-        currentLineWidth += tokenWidth;
+        curTokens.push(tk); curW += tw;
       }
     }
-
-    if (currentLineTokens.length > 0) {
-      lines.push({ tokens: currentLineTokens, width: currentLineWidth });
-    }
+    if (curTokens.length > 0) result.push({ tokens: curTokens, w: curW });
   }
-
-  return lines.length > 0 ? lines : [{ tokens: [{ text: "" }], width: 0 }];
+  return result.length > 0 ? result : [{ tokens: [{ text: "" }], w: 0 }];
 }
