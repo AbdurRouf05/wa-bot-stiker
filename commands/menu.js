@@ -20,7 +20,9 @@ export default async ({ sock, from, msg }) => {
  ⊳ .smeme (Sticker meme)
  ⊳ .toimg (Sticker ke gambar)
  ⊳ .tomp4 (Sticker ke video)
- ⊳ .qc (Quote sticker)
+ ⊳ .qc (Quote sticker WA)
+ ⊳ .brat (Brat sticker)
+ ⊳ .bratvid (Brat animasi)
  ⊳ .remini (Enhance gambar)
 
 
@@ -34,7 +36,6 @@ export default async ({ sock, from, msg }) => {
  ⊳ .ttt @tag (Tic-Tac-Toe)
 
 *🎭 FUN & UTILITY*
- ⊳ .brat (Brat meme)
  ⊳ .math (Kalkulator)
 
 ╭━━━━━━━━━━━━━━━━━━━

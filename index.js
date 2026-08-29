@@ -72,6 +72,10 @@ async function loadCommands() {
       }
       if (cmdName === "tiktok") commands["tt"] = module.default;
       if (cmdName === "delete") commands["del"] = module.default;
+      if (cmdName === "brat") {
+        commands["bratvid"] = module.default;
+        commands["bratgif"] = module.default;
+      }
     } catch (e) {
       console.error(`❌ Gagal memuat command ${file}:`, e.message);
     }
