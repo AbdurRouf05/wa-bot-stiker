@@ -85,7 +85,11 @@ async function loadCommands() {
 
 // helper: ambil teks dari berbagai tipe message
 function getTextFromMessage(msg) {
-  const m = msg.message || {};
+  const m = msg.message?.ephemeralMessage?.message ||
+            msg.message?.viewOnceMessage?.message ||
+            msg.message?.viewOnceMessageV2?.message ||
+            msg.message?.documentWithCaptionMessage?.message ||
+            msg.message || {};
   return (
     m.conversation ||
     m.extendedTextMessage?.text ||
@@ -328,8 +332,11 @@ async function connectToWhatsApp() {
       }
 
       const isMe = msg.key.fromMe;
-      const text = getTextFromMessage(msg).trim();
-      if (!text) continue;
+      const rawMsg = msg.message?.ephemeralMessage?.message ||
+                     msg.message?.viewOnceMessage?.message ||
+                     msg.message?.viewOnceMessageV2?.message ||
+                     msg.message?.documentWithCaptionMessage?.message ||
+                     msg.message || {};
 
       const isGroup = from.endsWith("@g.us");
 
@@ -340,25 +347,36 @@ async function connectToWhatsApp() {
 
       // ==========================================
       // SISTEM VERIFIKASI KONTAK (vCard)
+      // Diproses SEBELUM if (!text) agar pesan kontak tidak dilewati
       // ==========================================
-      const isContact = msg.message.contactMessage || msg.message.contactsArrayMessage;
+      const isContact = rawMsg.contactMessage || rawMsg.contactsArrayMessage;
       if (isContact) {
         let vcard = "";
-        if (msg.message.contactMessage) {
-          vcard = msg.message.contactMessage.vcard || "";
+        if (rawMsg.contactMessage) {
+          vcard = rawMsg.contactMessage.vcard || "";
         } else {
-          const contacts = msg.message.contactsArrayMessage.contacts || [];
+          const contacts = rawMsg.contactsArrayMessage.contacts || [];
           vcard = contacts.map(c => c.vcard).join(" ");
         }
         
         const vcardLower = vcard.toLowerCase();
-        // Validasi sederhana: vcard harus mengandung nama "abdbot"
-        if (vcardLower.includes("abdbot")) {
+        const botNumber = sock.user?.id ? sock.user.id.split(":")[0].replace(/\D/g, "") : "";
+        // Valid jika nomor kontak mengandung nomor bot, ATAU vcard mengandung kata 'abdbot', 'abd', atau 'bot'
+        const isBotNumber = botNumber && vcard.replace(/\D/g, "").includes(botNumber);
+        const isBotName = vcardLower.includes("abdbot") || vcardLower.includes("abd") || vcardLower.includes("bot");
+
+        if (isBotNumber || isBotName) {
           db.updateUser(senderJid, { isVerified: true });
-          await sock.sendMessage(from, { text: "✅ Verifikasi Sukses!\nTerima kasih telah menyimpan kontak bot. Anda sekarang dapat menggunakan semua perintah (command) bot ini." }, { quoted: msg });
+          await sock.sendMessage(from, { text: "✅ *Verifikasi Sukses!*\nTerima kasih telah menyimpan kontak bot. Anda sekarang dapat menggunakan semua perintah bot ini.\n\nKetik *.menu* untuk mulai!" }, { quoted: msg });
+          continue;
+        } else {
+          await sock.sendMessage(from, { text: "⚠️ Kontak yang Anda bagikan tidak cocok dengan nomor bot ini. Pastikan Anda membagikan kontak bot (*abdbot*) yang sudah disimpan di HP." }, { quoted: msg });
           continue;
         }
       }
+
+      const text = getTextFromMessage(msg).trim();
+      if (!text) continue;
 
       // Intercept game input (jawaban) sebelum mengecek prefix "."
       const isGameHandled = await handleGameInput({ sock, msg, from, text, isGroup });
@@ -371,15 +389,16 @@ async function connectToWhatsApp() {
 
       if (!text.startsWith(".")) continue;
 
-      // Bypass verifikasi untuk Owner / self message
+      // Bypass verifikasi untuk Owner / self message / jika dimatikan via DISABLE_AUTH=true
+      const disableAuth = process.env.DISABLE_AUTH === "true";
       const ownerNumber = process.env.OWNER || "";
       const isOwner = isMe || (ownerNumber && senderJid.includes(ownerNumber));
 
       // Cek apakah user sudah terverifikasi sebelum mengeksekusi command
-      if (!userData.isVerified && !isOwner) {
+      if (!disableAuth && !userData.isVerified && !isOwner) {
         await sock.sendMessage(
           from, 
-          { text: "⚠️ *AKSES DITOLAK*\n\nAnda belum terverifikasi! Silakan simpan nomor bot ini dengan nama *abdbot*, lalu kirim/bagikan kontak tersebut ke ruang chat ini (Pilih ikon klip/attachment -> Bagikan Kontak -> Pilih abdbot) untuk memvalidasi akun Anda dan mulai menggunakan bot." }, 
+          { text: "⚠️ *AKSES DITOLAK*\n\nAnda belum terverifikasi! Silakan simpan nomor bot ini di kontak HP Anda (dengan nama *abdbot* atau nama apa saja), lalu kirim/bagikan kontak tersebut ke ruang chat ini (Pilih ikon klip -> Bagikan Kontak -> Pilih kontak bot) untuk memvalidasi akun Anda." }, 
           { quoted: msg }
         );
         continue;
