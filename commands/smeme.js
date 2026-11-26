@@ -141,7 +141,7 @@ export default async ({ sock, msg, from, args, getMediaBuffer }) => {
       .webp({ quality: 90 })
       .toBuffer();
 
-    const finalSticker = addExifToWebpBuffer(webpBuf);
+    const finalSticker = await addExifToWebpBuffer(webpBuf);
 
     await sock.sendMessage(from, { sticker: finalSticker }, { quoted: msg });
   } catch (err) {

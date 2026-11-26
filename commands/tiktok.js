@@ -123,25 +123,6 @@ export default async ({ sock, msg, from, args }) => {
       }
     }
 
-    // API 2: Alternatif
-    await sock.sendMessage(
-      from,
-      { text: "🔄 Mencoba API alternatif..." },
-      { quoted: msg }
-    );
-
-    const altApiUrl = `https://www.tiklydown.com/api/download?url=${encodeURIComponent(url)}`;
-    const altResponse = await fetch(altApiUrl);
-    const altData = await altResponse.json();
-    
-    if (altData.videoUrl) {
-      const videoResponse = await fetch(altData.videoUrl);
-      const videoBuffer = await videoResponse.buffer();
-      
-      await sendVideo(sock, from, videoBuffer, altData.title || 'Video TikTok', altData.author || 'Unknown');
-      return;
-    }
-
     throw new Error('Semua API gagal');
 
   } catch (error) {

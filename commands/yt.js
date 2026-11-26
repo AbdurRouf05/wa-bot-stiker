@@ -93,7 +93,7 @@ export default async ({ sock, from, msg, args }) => {
       const options = {
         method: 'GET',
         headers: {
-          'x-rapidapi-key': process.env.RAPIDAPI_KEY || 'c60a569d9bmshc8784a5743699a0p10423cjsn8b083ea602a2',
+          'x-rapidapi-key': process.env.RAPIDAPI_KEY,
           'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com'
         }
       };
@@ -118,7 +118,8 @@ export default async ({ sock, from, msg, args }) => {
           throw new Error('Tidak bisa menemukan URL video yang valid dalam response.');
       }
 
-      const videoResponse = await fetch(videoUrl);
+      // Header Range wajib: tanpa ini googlevideo sering 403 / sangat lambat
+      const videoResponse = await fetch(videoUrl, { headers: { Range: 'bytes=0-' } });
       if (!videoResponse.ok) {
           throw new Error(`Gagal mendownload file video: HTTP ${videoResponse.status}`);
       }

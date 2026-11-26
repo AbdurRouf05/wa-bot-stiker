@@ -1,24 +1,21 @@
 import axios from "axios";
+import { mediaKind } from "../utils.js";
 
 export default async ({ sock, msg, from, getMediaBuffer }) => {
-  const isImage = msg.message?.imageMessage;
-  const isQuotedImage = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
-  
-  if (!isImage && !isQuotedImage) {
+  if (!process.env.RAPIDAPI_KEY) {
+    await sock.sendMessage(from, { text: "⚠️ RAPIDAPI_KEY belum diatur di server." }, { quoted: msg });
+    return;
+  }
+  let mediaData = null;
+  try { mediaData = await getMediaBuffer(msg); } catch {}
+  if (mediaKind(mediaData) !== "image") {
     await sock.sendMessage(from, { text: "⚠️ Kirim atau balas sebuah foto dengan caption *.remini* untuk memperjernihnya!" }, { quoted: msg });
     return;
   }
-  
+
   await sock.sendMessage(from, { react: { text: "⏳", key: msg.key } });
-  
+
   try {
-    let mediaMsg = isImage ? msg : { message: msg.message.extendedTextMessage.contextInfo.quotedMessage };
-    const mediaData = await getMediaBuffer(mediaMsg);
-    
-    if (!mediaData || !mediaData.buffer) {
-        throw new Error("Gagal mengunduh media dari pesan.");
-    }
-    
     // Ubah gambar asli ke format base64
     const base64Image = mediaData.buffer.toString('base64');
     
@@ -30,7 +27,7 @@ export default async ({ sock, msg, from, getMediaBuffer }) => {
     }, {
       headers: {
         "X-RapidAPI-Host": "photo-enhance-api.p.rapidapi.com",
-        "X-RapidAPI-Key": "c60a569d9bmshc8784a5743699a0p10423cjsn8b083ea602a2",
+        "X-RapidAPI-Key": process.env.RAPIDAPI_KEY,
         "Content-Type": "application/json"
       },
       timeout: 60000 // tunggu maksimal 1 menit
@@ -39,13 +36,13 @@ export default async ({ sock, msg, from, getMediaBuffer }) => {
     let finalBuffer;
 
     if (response.data && response.data.image_base64) {
-      finalBuffer = Buffer.from(response.data.image_base64, 'base64');
+      finalBuffer = Buffer.from(response.data.image_base64.replace(/^data:[^;]+;base64,/, ''), 'base64');
     } else if (response.data && response.data.image_url) {
       // Jika ternyata API mengembalikan URL gambar
       const imgRes = await axios.get(response.data.image_url, { responseType: 'arraybuffer' });
       finalBuffer = Buffer.from(imgRes.data);
     } else if (response.data && response.data.image) { // kadang response key-nya 'image'
-      finalBuffer = Buffer.from(response.data.image, 'base64');
+      finalBuffer = Buffer.from(response.data.image.replace(/^data:[^;]+;base64,/, ''), 'base64');
     } else {
       throw new Error(`Format response API tidak dikenali. Data: ${JSON.stringify(response.data).substring(0, 50)}`);
     }
