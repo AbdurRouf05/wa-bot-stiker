@@ -26,7 +26,7 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import { fileURLToPath, pathToFileURL } from "url";
-import { tmp, getMediaBuffer } from "./utils.js";
+import { tmp, getMediaBuffer, getMessageText, rememberMedia, unwrapMessage } from "./utils.js";
 import db from "./utils/db.js";
 import { handleGameInput } from "./utils/gameHandler.js";
 
@@ -63,13 +63,8 @@ async function loadCommands() {
       const cmdName = file.replace(".js", "");
       commands[cmdName] = module.default;
 
-      // Register alias jika ada (optional: bisa ditambahkan di dalam file command nantinya)
-      if (cmdName === "sticker") {
-        commands["s"] = module.default;
-        commands["toimg"] = module.default;
-        commands["img"] = module.default;
-        commands["tomp4"] = module.default;
-      }
+      // Alias: diekspor dari file command (export const aliases = [...])
+      for (const alias of module.aliases || []) commands[alias] = module.default;
       if (cmdName === "tiktok") commands["tt"] = module.default;
       if (cmdName === "delete") commands["del"] = module.default;
       if (cmdName === "brat") {
@@ -83,20 +78,9 @@ async function loadCommands() {
   console.log(`📦 Loaded ${Object.keys(commands).length} commands.`);
 }
 
-// helper: ambil teks dari berbagai tipe message
+// helper: ambil teks dari berbagai tipe message (termasuk sekali lihat & dokumen)
 function getTextFromMessage(msg) {
-  const m = msg.message?.ephemeralMessage?.message ||
-            msg.message?.viewOnceMessage?.message ||
-            msg.message?.viewOnceMessageV2?.message ||
-            msg.message?.documentWithCaptionMessage?.message ||
-            msg.message || {};
-  return (
-    m.conversation ||
-    m.extendedTextMessage?.text ||
-    m.imageMessage?.caption ||
-    m.videoMessage?.caption ||
-    ""
-  );
+  return getMessageText(msg.message);
 }
 
 let sock = null;
@@ -332,11 +316,9 @@ async function connectToWhatsApp() {
       }
 
       const isMe = msg.key.fromMe;
-      const rawMsg = msg.message?.ephemeralMessage?.message ||
-                     msg.message?.viewOnceMessage?.message ||
-                     msg.message?.viewOnceMessageV2?.message ||
-                     msg.message?.documentWithCaptionMessage?.message ||
-                     msg.message || {};
+      // Simpan media (termasuk sekali lihat) supaya bisa di-reply .s / .ss nanti
+      rememberMedia(msg);
+      const rawMsg = unwrapMessage(msg.message) || {};
 
       const isGroup = from.endsWith("@g.us");
 

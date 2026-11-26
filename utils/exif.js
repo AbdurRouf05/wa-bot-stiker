@@ -8,7 +8,7 @@ const STICKER_AUTHOR = process.env.STICKER_AUTHOR || "Bot";
  * Tambahkan EXIF metadata ke buffer WebP.
  * Jika gagal, return buffer asli tanpa EXIF (graceful degradation).
  */
-export async function addExifToWebpBuffer(webpBuffer, packName = STICKER_PACK, author = STICKER_AUTHOR) {
+export async function addExifToWebpBuffer(webpBuffer, packName = STICKER_PACK, author = STICKER_AUTHOR, extra = {}) {
   try {
     const img = new webpmux.Image();
     await img.load(webpBuffer);
@@ -18,7 +18,8 @@ export async function addExifToWebpBuffer(webpBuffer, packName = STICKER_PACK, a
       "sticker-pack-id": "com.abdbot.sticker",
       "sticker-pack-name": packName,
       "sticker-pack-publisher": author,
-      "emojis": ["😎"]
+      "emojis": ["😎"],
+      ...extra,
     });
 
     const jsonBuf = Buffer.from(json, "utf-8");
