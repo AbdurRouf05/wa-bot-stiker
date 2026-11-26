@@ -22,6 +22,19 @@ RUN apt-get update && apt-get install -y \
 # Install python dependencies
 RUN pip3 install --no-cache-dir opencv-contrib-python-headless numpy --break-system-packages
 
+# Konverter dokumen: LibreOffice headless (.topdf) + pdf2docx (.todocx)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libreoffice-writer \
+    libreoffice-calc \
+    libreoffice-impress \
+    fonts-liberation \
+    fonts-crosextra-carlito \
+    fonts-crosextra-caladea \
+    && rm -rf /var/lib/apt/lists/*
+# pdf2docx --no-deps agar tidak bentrok dengan opencv-contrib di atas
+RUN pip3 install --no-cache-dir --no-deps pdf2docx --break-system-packages \
+    && pip3 install --no-cache-dir PyMuPDF python-docx fonttools fire --break-system-packages
+
 # Install pnpm
 RUN npm install -g pnpm
 
