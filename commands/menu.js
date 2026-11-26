@@ -10,13 +10,15 @@ export default async ({ sock, from, msg }) => {
 ╰━━━━━━━━━━━━━━━━━━━
 
 *📦 BUNDLE DOWNLOADER*
+ ⊳ .spotify <judul> (Cari & kirim lagu)
  ⊳ .yt <url> (YouTube)
  ⊳ .tt <url> (TikTok)
  ⊳ .ig <url> (Instagram)
  ⊳ .pin <url> (Pinterest)
 
 *🎨 MEDIA & STICKER*
- ⊳ .s (Buat sticker)
+ ⊳ .s (Foto/video → sticker, bisa sekali lihat)
+ ⊳ .ss (Video → sticker bersuara 🔊)
  ⊳ .smeme (Sticker meme)
  ⊳ .toimg (Sticker ke gambar)
  ⊳ .tomp4 (Sticker ke video)
@@ -25,6 +27,10 @@ export default async ({ sock, from, msg }) => {
  ⊳ .bratvid (Brat animasi)
  ⊳ .remini (Enhance gambar)
 
+*📄 DOKUMEN & QR*
+ ⊳ .qr <teks/link> (Buat kode QR)
+ ⊳ .topdf (Word/Excel/PPT/foto/teks → PDF)
+ ⊳ .todocx (PDF → Word)
 
 *👥 GROUP TOOLS*
  ⊳ .hidetag (Mention all)
@@ -37,6 +43,7 @@ export default async ({ sock, from, msg }) => {
 
 *🎭 FUN & UTILITY*
  ⊳ .math (Kalkulator)
+ ⊳ .cekwa <nomor> (Info publik nomor WA)
 
 ╭━━━━━━━━━━━━━━━━━━━
 ┃

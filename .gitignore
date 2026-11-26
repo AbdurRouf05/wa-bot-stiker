@@ -11,3 +11,6 @@ auth_abdbot/
 referensi/
 .bad_session
 database.json
+
+# Konfigurasi MCP lokal (berisi API key)
+.mcp.json

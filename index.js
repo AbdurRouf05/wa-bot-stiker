@@ -272,7 +272,9 @@ async function connectToWhatsApp() {
             text += `Ketik perintah berawalan titik (\`.\`) untuk berinteraksi dengan saya. Contoh: \`.menu\`\n\n`;
             text += `*DAFTAR MENU UTAMA:*\n`;
             text += ` ⊳ .yt / .tt / .ig (Download Video)\n`;
-            text += ` ⊳ .s / .smeme (Buat Sticker)\n`;
+            text += ` ⊳ .s / .ss (Sticker & Sticker Bersuara)\n`;
+            text += ` ⊳ .spotify (Cari Lagu)\n`;
+            text += ` ⊳ .qr / .topdf / .todocx (QR & Dokumen)\n`;
             text += ` ⊳ .profile (Cek Status RPG)\n`;
             text += ` ⊳ .ttt (Tic-Tac-Toe)\n`;
             text += ` ⊳ .math (Kalkulator Pintar)\n\n`;
